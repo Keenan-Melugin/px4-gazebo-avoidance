@@ -32,11 +32,14 @@ class WorldMarkers(Node):
 
     def __init__(self):
         super().__init__('world_markers')
-        default = (f'{__import__("os").environ["HOME"]}/PX4-Autopilot'
+        default = (f'{os.path.expanduser("~")}/PX4-Autopilot'
                    '/Tools/simulation/gz/worlds/walls.sdf')
         self.declare_parameter('world_sdf', default)
         self.declare_parameter('skip', ['ground_plane'])
-        path = self.get_parameter('world_sdf').value
+        # `or default` matters: the launch file exposes world_sdf with an
+        # empty default, and an empty override would otherwise win and leave
+        # the markers silently missing.
+        path = self.get_parameter('world_sdf').value or default
         skip = set(self.get_parameter('skip').value)
 
         qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
@@ -48,8 +51,6 @@ class WorldMarkers(Node):
         self.pub.publish(self.msg)
 
     def build(self, path, skip):
-        import os
-        import re
         arr = MarkerArray()
         if not os.path.isfile(path):
             self.get_logger().error(f'world file not found: {path}')

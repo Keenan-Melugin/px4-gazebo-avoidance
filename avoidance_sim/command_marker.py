@@ -1,4 +1,4 @@
-"""The right-click menu above the aircraft: arm, take off, land, return.
+"""The right-click menu above the aircraft: arm, take off, land, disarm.
 
 Split out of a single-file prototype. The behaviour here is measured, not
 assumed; see the repository README for the numbers and the traps.

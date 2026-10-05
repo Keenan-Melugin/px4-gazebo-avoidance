@@ -53,8 +53,10 @@ class SoftwarePilot(Node):
     KP_Z = 0.30
     KD_Z = 0.20
     # Yaw. The stick commands a RATE, not an angle, so this is P on heading
-    # error, and the sign was measured (+0.5 stick gave +24.3 deg/s, -0.5 gave
-    # -24.2 deg/s, so positive stick is clockwise).
+    # error. The sign was measured: positive stick turns clockwise, confirmed
+    # symmetrically (+0.5 gave +24.3 deg/s and -0.5 gave -24.2 deg/s, each
+    # averaged over a 3 s hold that includes spin-up, so those two figures
+    # understate the steady rate the sweep below measures).
     #
     # The catch, measured by sweeping the stick on this airframe:
     #     0.05  0.08  0.10 | 0.12  0.15  0.20  0.30  0.50
@@ -71,7 +73,11 @@ class SoftwarePilot(Node):
     # Dead band to about 0.10, then rate = (stick - 0.10) * 72 deg/s, which
     # predicts 28.8 at stick 0.50 against 28.8 measured. Inverting that model
     # is what lets the command be expressed as a rate.
-    YAW_DZ = 0.105                      # stick that produces no rotation
+    # 0.105 is interpolated, not measured: the sweep jumps from 0.10 (no
+    # rotation) to 0.12 (1.1 deg/s), so the edge is only known to lie in
+    # (0.10, 0.12]. Closed-loop the smallest command this produces is 0.135,
+    # which is clear of it either way.
+    YAW_DZ = 0.105                      # just inside the dead band
     YAW_RATE_PER_STICK = math.radians(72.0)   # per unit of stick above YAW_DZ
     # Command a rate proportional to error, capped. The cap is the important
     # number: unlimited P saturated near 65 deg/s and then overshot ~25 deg,
@@ -81,6 +87,7 @@ class SoftwarePilot(Node):
     YAW_RATE_MAX = math.radians(20.0)
     YAW_TOL = math.radians(3.0)         # inside this, stop turning
     ARRIVED_YAW = math.radians(8.0)
+    YAW_GIVE_UP_TICKS = 1500            # 30 s at 50 Hz
     DEADBAND = 0.4     # m
     ARRIVED = 0.6      # m
 
@@ -115,6 +122,7 @@ class SoftwarePilot(Node):
         self.goal = None         # (north, east, alt)
         self.goal_yaw = None     # NED heading, radians. None = do not turn.
         self.yaw_rate = 0.0      # differentiated heading, for damping
+        self._yaw_ticks = 0      # how long we have been chasing a heading
         self._last_yaw = None
         self._last_yaw_t = None
         self.active = False
@@ -127,7 +135,13 @@ class SoftwarePilot(Node):
     def on_local(self, m):
         if math.isfinite(m.x):
             self.pos = (m.x, m.y, m.z)
-            self.vel = (m.vx, m.vy, m.vz) if math.isfinite(m.vx) else (0., 0., 0.)
+            # All three components, not just vx. A non-finite vz used to
+            # reach the throttle clamp, and max(-1, min(1, nan)) is 1.0 in
+            # Python rather than nan, so it commanded FULL climb.
+            self.vel = ((m.vx, m.vy, m.vz)
+                        if (math.isfinite(m.vx) and math.isfinite(m.vy)
+                            and math.isfinite(m.vz))
+                        else (0., 0., 0.))
             # Yaw rate by differentiation. VehicleLocalPosition carries no
             # yawspeed, and pulling in VehicleAngularVelocity just for this
             # would add a subscription for a number we can difference. Lightly
@@ -137,7 +151,11 @@ class SoftwarePilot(Node):
                 dt = now - self._last_yaw_t
                 if 1e-3 < dt < 0.5:
                     raw = wrap(m.heading - self._last_yaw) / dt
-                    self.yaw_rate += 0.5 * (raw - self.yaw_rate)
+                    # A single non-finite sample would otherwise latch the
+                    # filter at NaN for the life of the process, because the
+                    # update subtracts its own current value.
+                    if math.isfinite(raw):
+                        self.yaw_rate += 0.5 * (raw - self.yaw_rate)
             self._last_yaw, self._last_yaw_t = m.heading, now
             self.yaw = m.heading
 
@@ -164,6 +182,7 @@ class SoftwarePilot(Node):
         else:
             self.goal_yaw = None
         self.active = True
+        self._yaw_ticks = 0
         hdg = ('none' if self.goal_yaw is None
                else '%+.0f deg' % math.degrees(self.goal_yaw))
         self.get_logger().info(
@@ -229,7 +248,9 @@ class SoftwarePilot(Node):
                 m.roll = float(self.roll_sign * u_right * scale)
             if abs(ez) > self.DEADBAND:
                 u_z = self.KP_Z * ez - self.KD_Z * (-vd)
-                m.throttle = float(max(-1.0, min(1.0, u_z)))
+                # Explicit, because the clamp alone does not reject NaN.
+                if math.isfinite(u_z):
+                    m.throttle = float(max(-1.0, min(1.0, u_z)))
 
             # Yaw is independent of translation: the XY error is rotated into
             # the heading frame every tick, so turning mid-flight does not
@@ -240,6 +261,11 @@ class SoftwarePilot(Node):
                 if abs(eyaw) > self.YAW_TOL:
                     # Wanted rate, capped, damped by the rate we already have.
                     want = self.KP_YAW * eyaw - self.KD_YAW * self.yaw_rate
+                    # Clamp AFTER rejecting non-finite values. Clamping a NaN
+                    # returns the positive cap, so the aircraft would turn
+                    # clockwise at full rate no matter which way was shorter.
+                    if not math.isfinite(want):
+                        want = 0.0
                     want = max(-self.YAW_RATE_MAX,
                                min(self.YAW_RATE_MAX, want))
                     # Invert the measured model: step over the dead band, then
@@ -248,6 +274,21 @@ class SoftwarePilot(Node):
                     u = self.YAW_DZ + abs(want) / self.YAW_RATE_PER_STICK
                     u = min(1.0, u)
                     m.yaw = float(self.yaw_sign * math.copysign(u, want))
+
+            # Bounded time. With an inverted yaw_sign the heading loop parks
+            # 179 degrees off and limit-cycles there indefinitely, streaming
+            # sticks with nothing to stop it. Give up on the heading rather
+            # than fly forever.
+            if self.goal_yaw is not None:
+                self._yaw_ticks += 1
+                if self._yaw_ticks > self.YAW_GIVE_UP_TICKS:
+                    self.get_logger().warn(
+                        'could not reach the commanded heading in %.0f s '
+                        '(%.0f deg off). Holding position and giving up on '
+                        'yaw; check yaw_sign.'
+                        % (self.YAW_GIVE_UP_TICKS * self.RATE,
+                           math.degrees(abs(eyaw))))
+                    self.goal_yaw = None
 
             yaw_ok = self.goal_yaw is None or abs(eyaw) <= self.ARRIVED_YAW
             if horiz <= self.ARRIVED and abs(ez) <= self.ARRIVED and yaw_ok:

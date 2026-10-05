@@ -1,124 +1,270 @@
 #!/usr/bin/env bash
 # Set up everything this package needs on a clean Ubuntu 24.04 machine.
 #
-# Every step is checked and the script stops at the first failure. That is the
-# whole point: an earlier version of this piped the agent install to /dev/null,
-# so when it failed the agent was left built but never installed. Nothing
-# downstream explains that, and without the agent PX4 and ROS cannot talk at
-# all, so the entire stack looks dead for no visible reason.
+# Design goal: every step is checked, the script stops at the first failure,
+# and the message names the thing that actually failed. An earlier version
+# piped the agent install to /dev/null, so when it failed the agent was left
+# built but never installed, and every downstream symptom was unexplainable.
+#
+# A later version then failed for three reasons of its own, all found by
+# review and all fixed here:
+#   * it smoke-tested the agent with `--help`, which exits 1 by design, so it
+#     always failed and blamed a missing shared library that was fine
+#   * it sourced ROS under `set -u`, and ROS's own setup.bash reads
+#     AMENT_TRACE_SETUP_FILES unguarded, which aborts immediately
+#   * it resolved its own location after changing directory, so the
+#     documented ./scripts/install.sh invocation died on a clean machine
 set -euo pipefail
 
 PX4_VERSION=v1.17.0
 MSGS_BRANCH=release/1.17
 AGENT_VERSION=v2.4.3
+
+# Resolve our own location BEFORE anything changes directory.
+HERE="$(cd -P "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)"
 WS="${WS:-$HOME/av_ws}"
+AGENT_SRC="$HOME/Micro-XRCE-DDS-Agent"
 
 say()  { printf '\n=== %s ===\n' "$1"; }
 ok()   { printf '  ok    %s\n' "$1"; }
+warn() { printf '  warn  %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1" >&2; exit 1; }
+
+# ROS setup.bash reads unguarded variables, so -u has to come off around it.
+ros_source() {
+  set +u
+  # shellcheck disable=SC1091
+  source /opt/ros/jazzy/setup.bash
+  set -u
+}
+
+# colcon exits 0 when --packages-select matches nothing, and ament_python
+# never imports the code, so the exit code proves very little. Check that
+# colcon actually recorded the package as built.
+assert_built() {
+  local pkg=$1
+  [ -f "$WS/install/$pkg/share/colcon-core/packages/$pkg" ] \
+    || fail "$pkg reported success but was not actually built. If colcon said
+        'ignoring unknown package', the workspace layout is wrong."
+}
+
+cat <<EOF
+This will write to:
+  $WS                     the colcon workspace
+  $AGENT_SRC   the Micro XRCE-DDS Agent source and build
+  /usr/local                   the agent binary and library, using sudo
+
+It does NOT install PX4 $PX4_VERSION. See the README for that.
+EOF
 
 # ---------------------------------------------------------------- preflight
 say "Checking the platform"
-. /etc/os-release
-[ "${VERSION_ID:-}" = "24.04" ] || fail \
-  "This needs Ubuntu 24.04. Found ${PRETTY_NAME:-unknown}. Raspberry Pi OS
-        will not work: there are no ROS 2 Jazzy packages for it."
-ok "Ubuntu 24.04 ($(dpkg --print-architecture))"
 
-[ -d /opt/ros/jazzy ] || fail "ROS 2 Jazzy not found at /opt/ros/jazzy."
+[ "${EUID:-$(id -u)}" -ne 0 ] \
+  || fail "do not run this as root. It calls sudo itself where it needs to,
+        and running the whole thing as root puts the workspace in /root."
+
+[ -r /etc/os-release ] || fail "cannot read /etc/os-release, so I cannot tell
+        what this machine is. This needs Ubuntu 24.04 (noble)."
+# shellcheck disable=SC1091
+. /etc/os-release
+CODENAME="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+if [ "$CODENAME" = "noble" ]; then
+  ok "Ubuntu 24.04 / noble ($(dpkg --print-architecture))"
+elif [ "${VERSION_ID:-}" = "24.04" ]; then
+  ok "Ubuntu 24.04 ($(dpkg --print-architecture))"
+else
+  fail "this needs Ubuntu 24.04 (noble). Found ${PRETTY_NAME:-unknown}.
+        Raspberry Pi OS will not work: there are no ROS 2 Jazzy binary
+        packages for Debian bookworm."
+fi
+
+[ -r /opt/ros/jazzy/setup.bash ] \
+  || fail "ROS 2 Jazzy not found. Expected /opt/ros/jazzy/setup.bash."
 ok "ROS 2 Jazzy"
 
+command -v colcon >/dev/null \
+  || fail "colcon not found. sudo apt install python3-colcon-common-extensions"
+command -v rosdep >/dev/null \
+  || fail "rosdep not found. sudo apt install python3-rosdep"
+for t in git cmake make g++; do
+  command -v "$t" >/dev/null || fail "$t not found. sudo apt install build-essential git cmake"
+done
+ok "build tools"
+
 command -v gz >/dev/null || fail "Gazebo not found. Install Gazebo Harmonic."
-ok "Gazebo $(gz sim --versions 2>/dev/null | head -1)"
+if GZ_VER=$(gz sim --versions 2>/dev/null | head -1); then
+  case "$GZ_VER" in
+    8.*) ok "Gazebo Harmonic $GZ_VER" ;;
+    "")  fail "gz is installed but 'gz sim --versions' printed nothing, so
+        gz-sim is probably missing. Install gz-harmonic, not just gz-tools." ;;
+    *)   fail "found Gazebo $GZ_VER but this needs Harmonic (8.x). Other
+        versions will not match ros_gz_bridge and will fail at runtime." ;;
+  esac
+else
+  fail "'gz sim --versions' failed, so gz-sim is not usable. Install
+        gz-harmonic."
+fi
+
+# Ask for sudo now rather than an hour into the agent build.
+sudo -v || fail "this needs sudo to install the agent into /usr/local."
+ok "sudo"
 
 # ------------------------------------------------------------------ the agent
 say "Micro XRCE-DDS Agent $AGENT_VERSION"
 if command -v MicroXRCEAgent >/dev/null; then
   ok "already installed at $(command -v MicroXRCEAgent)"
 else
-  cd "$HOME"
-  [ -d Micro-XRCE-DDS-Agent ] || git clone -q -b "$AGENT_VERSION" --depth 1 \
-    https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-  mkdir -p Micro-XRCE-DDS-Agent/build
-  cd Micro-XRCE-DDS-Agent/build
-  cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null
-  make -j"$(nproc)" >/dev/null
-  # NOT silenced, and the result is checked. This is the step that failed
-  # quietly before.
-  sudo make install || fail "agent install failed. It needs sudo."
+  [ -d "$AGENT_SRC" ] || git clone -b "$AGENT_VERSION" --depth 1 \
+    https://github.com/eProsima/Micro-XRCE-DDS-Agent.git "$AGENT_SRC"
+  mkdir -p "$AGENT_SRC/build"
+  echo "  building. This compiles Fast-DDS and Fast-CDR from source too, so"
+  echo "  it takes tens of minutes, and considerably longer on a Pi."
+  JOBS_AGENT=$(nproc)
+  MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
+  if [ "$MEM_MB" -lt 8192 ]; then
+    JOBS_AGENT=2
+    echo "  under 8 GB of RAM, so limiting to $JOBS_AGENT jobs."
+  fi
+  # Subshell, so the working directory never moves for the rest of the script.
+  (
+    cd "$AGENT_SRC/build"
+    cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null
+    make -j"$JOBS_AGENT"
+  ) || fail "agent build failed. If it was killed, that is memory: add swap
+        and rerun."
+  ( cd "$AGENT_SRC/build" && sudo make install ) \
+    || fail "agent install failed."
   sudo ldconfig /usr/local/lib/
   command -v MicroXRCEAgent >/dev/null \
-    || fail "agent installed but not on PATH. Check /usr/local/bin."
-  MicroXRCEAgent --help >/dev/null 2>&1 \
-    || fail "agent is on PATH but will not run. Usually a missing
-        libmicroxrcedds_agent.so, which means ldconfig did not pick it up."
-  ok "installed and runs"
+    || fail "agent installed but is not on PATH. Look in /usr/local/bin."
+  # Test the thing the error message actually claims. Do NOT use --help: the
+  # agent prints help and exits 1 by design, so that is not a health check.
+  if ldd "$(command -v MicroXRCEAgent)" 2>/dev/null | grep -q "not found"; then
+    ldd "$(command -v MicroXRCEAgent)" | grep "not found" | sed 's/^/        /'
+    fail "the agent is installed but cannot find its shared libraries (above).
+        Note Fast-DDS stays in $AGENT_SRC/build/temp_install,
+        so do not delete that directory."
+  fi
+  ok "installed, and its libraries resolve"
 fi
 
 # -------------------------------------------------------------------- px4_msgs
 say "px4_msgs $MSGS_BRANCH"
 mkdir -p "$WS/src"
 if [ ! -d "$WS/src/px4_msgs" ]; then
-  git clone -q -b "$MSGS_BRANCH" --depth 1 \
+  git clone -b "$MSGS_BRANCH" --depth 1 \
     https://github.com/PX4/px4_msgs.git "$WS/src/px4_msgs"
 fi
-if [ -d "$WS/install/px4_msgs" ]; then
-  ok "already built"
-else
-  echo "  building 235 messages from source, because no binary package exists"
-  echo "  on any architecture. Minutes on a desktop, far longer on a Pi."
-  MEM_GB=$(awk '/MemTotal/{printf "%.0f", $2/1024/1024}' /proc/meminfo)
-  JOBS=$(nproc)
-  if [ "$MEM_GB" -lt 8 ]; then
-    JOBS=2
-    echo "  only ${MEM_GB}GB of RAM, so limiting to $JOBS jobs to avoid the"
-    echo "  out-of-memory killer. Add swap if this still dies."
-  fi
-  # shellcheck disable=SC1091
-  source /opt/ros/jazzy/setup.bash
-  ( cd "$WS" && MAKEFLAGS="-j$JOBS" colcon build --packages-select px4_msgs ) \
-    || fail "px4_msgs build failed. If it was killed, that is memory: add swap
-        and rerun with MAKEFLAGS=-j1."
-  ok "built"
+
+# ------------------------------------------------------------- this package
+say "Linking this package into $WS/src"
+# If the repo is already inside the workspace, linking it again would make
+# colcon see one package under two names, and colcon hard-errors on duplicate
+# package names, so nothing would build at all.
+case "$HERE/" in
+  "$WS/src/"*)
+    ok "repo is already inside the workspace, no link needed" ;;
+  *)
+    ln -sfn "$HERE" "$WS/src/avoidance_sim"
+    ok "linked $HERE" ;;
+esac
+
+# -------------------------------------------------------------- dependencies
+say "Installing dependencies with rosdep"
+# Must run AFTER px4_msgs is in src/, because px4_msgs has no rosdep key
+# (it is source-only on every architecture) and --ignore-src only skips it
+# once it is physically present. Without this step the build still succeeds,
+# because ament_python never imports anything, and the stack then dies at
+# runtime on a missing scipy or ros_gz_bridge.
+ros_source
+if ! rosdep update --rosdistro jazzy >/dev/null 2>&1; then
+  warn "rosdep update failed (offline?). Continuing with the existing cache."
+fi
+rosdep install --from-paths "$WS/src" --ignore-src -y --rosdistro jazzy \
+  || fail "rosdep could not install the dependencies. The package needs
+        ros_gz_bridge, rviz2, python3-scipy, sensor_msgs_py, interactive_markers
+        and tf2_ros_py."
+ok "dependencies present"
+
+# -------------------------------------------------------------------- builds
+say "Building"
+JOBS=$(nproc)
+MEM_MB=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
+# Truncate rather than round: a Pi 5 reports about 7.7 GiB, which rounds up
+# to 8 and would have escaped this guard.
+if [ "$MEM_MB" -lt 8192 ]; then
+  JOBS=2
+  echo "  $((MEM_MB / 1024)) GB of RAM, so limiting to $JOBS jobs to stay"
+  echo "  clear of the out-of-memory killer. Add swap if it still dies."
+fi
+if [ -n "${CMAKE_GENERATOR:-}" ]; then
+  warn "CMAKE_GENERATOR is set to '$CMAKE_GENERATOR'. MAKEFLAGS does not
+        limit Ninja, so the job limit above will not apply."
 fi
 
-# ------------------------------------------------------------------- this package
-say "avoidance_sim"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-[ -e "$WS/src/avoidance_sim" ] || ln -s "$HERE" "$WS/src/avoidance_sim"
-# shellcheck disable=SC1091
-source /opt/ros/jazzy/setup.bash
+echo "  px4_msgs: 235 message definitions, no binary package exists on any"
+echo "  architecture, so this is a source build. Minutes on a desktop."
+ros_source
+( cd "$WS" && MAKEFLAGS="-j$JOBS" colcon build --packages-select px4_msgs ) \
+  || fail "px4_msgs build failed. If it was killed, that is memory: add swap
+        and rerun with MAKEFLAGS=-j1."
+assert_built px4_msgs
+ok "px4_msgs"
+
 ( cd "$WS" && colcon build --packages-select avoidance_sim ) \
   || fail "avoidance_sim build failed."
-ok "built"
+assert_built avoidance_sim
+ok "avoidance_sim"
 
 # -------------------------------------------------------------------- renderer
 say "Checking you have hardware OpenGL"
 if command -v glxinfo >/dev/null; then
-  REND=$(glxinfo -B 2>/dev/null | sed -n 's/^OpenGL renderer string: //p')
+  # || true, because glxinfo exits non-zero with no display and pipefail
+  # would otherwise abort the script right before the instructions print.
+  GLX=$(glxinfo -B 2>/dev/null || true)
+  REND=$(printf '%s\n' "$GLX" | sed -n 's/^OpenGL renderer string: //p')
+  GLVER=$(printf '%s\n' "$GLX" | sed -n 's/^OpenGL version string: //p' \
+          | grep -oE '^[0-9]+\.[0-9]+' || true)
   case "$REND" in
+    "") warn "could not read a renderer. No DISPLAY set? Rendering is checked
+        again when Gazebo starts." ;;
     *llvmpipe*|*softpipe*|*swrast*)
-      printf '  WARNING  software rendering (%s).\n' "$REND"
-      printf '           Expect a real-time factor near 0.03 instead of 1.0,\n'
-      printf '           which is unusable rather than slow. Fix this first.\n' ;;
-    "") printf '  WARNING  could not read a renderer. No display?\n' ;;
-    *)  ok "hardware renderer: $REND" ;;
+      warn "software rendering ($REND).
+        Expect a real-time factor near 0.03 instead of 1.0, which is
+        unusable rather than slow. Fix this before going further." ;;
+    *)
+      ok "hardware renderer: $REND"
+      # Gazebo's default ogre2 backend asserts OpenGL 3.3. A Raspberry Pi
+      # reports a hardware renderer but caps desktop GL at 3.1, so the
+      # renderer name alone is not enough.
+      if [ -n "$GLVER" ] && [ "$(printf '%s\n3.3\n' "$GLVER" | sort -V | head -1)" != "3.3" ]; then
+        warn "but desktop OpenGL is only $GLVER, and Gazebo's default
+        renderer needs 3.3. Start PX4 with PX4_GZ_SIM_RENDER_ENGINE=ogre,
+        and note that backend needs a real display."
+      fi ;;
   esac
 else
-  printf '  note     install mesa-utils to check this (glxinfo).\n'
+  printf '  note  install mesa-utils to check this (glxinfo).\n'
 fi
 
 say "Done"
 cat <<EOF
   Source the workspace, then run it in two terminals:
 
+    source /opt/ros/jazzy/setup.bash
     source $WS/install/setup.bash
 
-    cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls make px4_sitl gz_x500_depth
+    cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
     ros2 launch avoidance_sim sim.launch.py
 
-  Then switch avoidance on:  px4-param set CP_DIST 2.0
+  Then, at the pxh> prompt in the PX4 terminal:
 
-  Note this script does NOT install PX4 $PX4_VERSION itself, since that is a
-  firmware build with its own setup script. See the README.
+    param set CP_DIST 2.0
+    param set CP_GO_NO_DATA 1
+
+  The second one matters: the camera only sees 73 degrees ahead, and at its
+  default of 0 PX4 refuses to accelerate in any direction it cannot see.
+
+  This script did NOT install PX4 $PX4_VERSION. See the README.
 EOF

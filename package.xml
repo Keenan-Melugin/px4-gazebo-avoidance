@@ -15,7 +15,10 @@
   <depend>sensor_msgs_py</depend>
   <depend>visualization_msgs</depend>
   <depend>interactive_markers</depend>
-  <depend>tf2_ros</depend>
+  <!-- The Python broadcasters come from tf2_ros_py. The C++ tf2_ros
+       package contains no Python at all, so declaring it is wrong and
+       only works where something else happens to pull tf2_ros_py in. -->
+  <depend>tf2_ros_py</depend>
   <depend>python3-numpy</depend>
   <depend>python3-scipy</depend>
 

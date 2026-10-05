@@ -17,6 +17,21 @@ from .frames import PX4_QOS
 
 
 class GoalBridge(Node):
+    """RViz's flat "2D Goal Pose" tool -> a PX4 reposition command.
+
+    Two details carried over from the prototype, both sourced rather than
+    guessed:
+
+    * `param2` must be 1. PX4's own navigator source comments that not
+      setting it is unsupported.
+    * `param5` and `param6` are float64, so latitude and longitude keep
+      their precision through the command.
+
+    An RViz ground click has z = 0, because the tool projects onto the ground
+    plane, so the clicked altitude is meaningless and the current altitude is
+    held instead. Use the 3D goal marker's vertical arrow to change altitude.
+    """
+
     def __init__(self):
         super().__init__('rviz_goal_bridge')
         self.home = None

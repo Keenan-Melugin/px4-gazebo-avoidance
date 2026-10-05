@@ -28,13 +28,31 @@ from .software_pilot import SoftwarePilot
 from .tf_publisher import TfPublisher
 from .world_markers import WorldMarkers
 
-NODE_TYPES = (TfPublisher, WorldMarkers, GoalBridge, CommandMarker, Goal3D,
+# Order matches the single-file prototype this was split from. Nothing
+# depends on it, but the split was meant to preserve behaviour exactly.
+NODE_TYPES = (TfPublisher, GoalBridge, WorldMarkers, CommandMarker, Goal3D,
               SoftwarePilot)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    nodes = [cls() for cls in NODE_TYPES]
+    # Build each node separately. One throwing constructor used to kill the
+    # process before the executor started, so a missing dependency in any
+    # single node silently took the other five features with it and the user
+    # saw one traceback naming one module.
+    nodes = []
+    for cls in NODE_TYPES:
+        try:
+            nodes.append(cls())
+        except Exception as exc:
+            print('[rviz_bridge] %s failed to start: %s' % (cls.__name__, exc))
+    if not nodes:
+        print('[rviz_bridge] nothing started, giving up')
+        rclpy.try_shutdown()
+        return
+    if len(nodes) < len(NODE_TYPES):
+        print('[rviz_bridge] running degraded: %d of %d nodes'
+              % (len(nodes), len(NODE_TYPES)))
     ex = MultiThreadedExecutor()
     for n in nodes:
         ex.add_node(n)

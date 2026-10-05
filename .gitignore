@@ -16,3 +16,10 @@ __pycache__/
 
 # runtime noise
 *.log
+
+# patch debris (this repo ships a patch)
+*.orig
+*.rej
+
+# os
+.DS_Store

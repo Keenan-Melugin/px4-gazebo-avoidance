@@ -51,6 +51,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'agent_cmd', default_value='MicroXRCEAgent',
             description='Path to the agent binary, if it is not on PATH.'),
+        DeclareLaunchArgument(
+            'world_sdf', default_value='',
+            description='Gazebo world file to draw obstacles from. Empty '
+                        'means the node default, ~/PX4-Autopilot/Tools/'
+                        'simulation/gz/worlds/walls.sdf.'),
 
         # PX4 talks to ROS 2 through this. Without it nothing below receives
         # anything and the stack looks dead with no diagnosable cause.
@@ -74,11 +79,14 @@ def generate_launch_description():
         # real names and collide with each other. Each node names itself.
         Node(
             package='avoidance_sim', executable='rviz_bridge',
-            parameters=sim_time, output='screen'),
+            parameters=sim_time + [{'world_sdf': LaunchConfiguration('world_sdf')}],
+            output='screen'),
 
         Node(
             condition=IfCondition(use_rviz),
             package='rviz2', executable='rviz2', name='rviz2',
             arguments=['-d', rviz_config],
-            parameters=sim_time, output='log'),
+            # screen, not log: RViz's OpenGL startup failures are the most
+            # common new-user problem, and in a log file nobody finds them.
+            parameters=sim_time, output='screen'),
     ])
