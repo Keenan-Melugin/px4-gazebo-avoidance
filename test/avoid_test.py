@@ -15,7 +15,8 @@ from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 from geometry_msgs.msg import PoseStamped
-from px4_msgs.msg import VehicleLocalPosition, VehicleCommand
+from px4_msgs.msg import (VehicleCommand, VehicleLocalPosition,
+                          VehicleStatus)
 
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
@@ -34,13 +35,21 @@ def param(name, value):
 class A(Node):
     def __init__(self):
         super().__init__('avoid_test')
-        self.goal = self.create_publisher(PoseStamped, '/evtol/pilot_goal', 10)
+        self.goal = self.create_publisher(PoseStamped, '/avoidance_sim/pilot_goal', 10)
         self.cmd = self.create_publisher(VehicleCommand,
                                          '/fmu/in/vehicle_command', QOS)
         self.create_subscription(VehicleLocalPosition,
                                  '/fmu/out/vehicle_local_position_v1',
                                  self.on_pos, QOS)
+        self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1',
+                                 self.on_status, QOS)
         self.pos = None
+        self.armed = None
+        self.healthy = None
+
+    def on_status(self, m):
+        self.armed = (m.arming_state == 2)
+        self.healthy = m.pre_flight_checks_pass
 
     def on_pos(self, m):
         if math.isfinite(m.x):
@@ -95,8 +104,30 @@ def main():
     print("  stopping the pilot first, so the throttle stick returns to center")
     n.stop_pilot()
     spin(n, 4.0)
-    n.arm()
-    spin(n, 4.0)
+
+    # Arming has two preconditions that both bite in practice. PX4 refuses
+    # while the throttle stick is above center, which an active climb goal
+    # holds it at, hence the stop above. And it refuses until the barometer
+    # and EKF have settled, which takes tens of seconds after boot, so a
+    # single arm command sent too early fails and is never retried.
+    if not n.armed:
+        for attempt in range(20):
+            if n.healthy:
+                n.arm()
+                spin(n, 2.0)
+                if n.armed:
+                    print("  armed after %d attempt(s)" % (attempt + 1))
+                    break
+            else:
+                n.stop_pilot()
+            spin(n, 3.0)
+        if not n.armed:
+            print("  could not arm: healthy=%s. Check the PX4 console."
+                  % n.healthy)
+            return 1
+    else:
+        print("  already armed")
+    spin(n, 2.0)
 
     print("\n  repositioning to east %.1f with avoidance OFF" % START_EAST)
     param("CP_DIST", -1.0)

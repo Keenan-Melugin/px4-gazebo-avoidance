@@ -100,7 +100,7 @@ class SoftwarePilot(Node):
                                  self.on_local, PX4_QOS)
         self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status_v1',
                                  self.on_status, PX4_QOS)
-        self.create_subscription(PoseStamped, '/evtol/pilot_goal',
+        self.create_subscription(PoseStamped, '/avoidance_sim/pilot_goal',
                                  self.on_goal, 10)
         self.cmd = self.create_publisher(
             VehicleCommand, '/fmu/in/vehicle_command', PX4_QOS)

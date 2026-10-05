@@ -185,6 +185,11 @@ arm while the throttle stick is above center, and a goal the aircraft has not
 reached holds it there. If arming is denied with `throttle above center`, use
 `STOP` on the goal menu to release the pilot, then arm.
 
+Give PX4 time before the first arm, too. For tens of seconds after it starts
+it reports `Preflight Fail: No valid data from Baro 0` and `ekf2 missing
+data`, and arming is denied with `Resolve system health failures first`. Wait
+for `Ready for takeoff` in the PX4 console.
+
 Do not use `TAKEOFF` while the pilot is running either: it streams sticks
 continuously to hold Position mode, and that overrides the automatic
 takeoff.

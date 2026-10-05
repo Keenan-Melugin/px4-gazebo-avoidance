@@ -27,7 +27,7 @@ def wrap(a):
 class T(Node):
     def __init__(self):
         super().__init__('yaw_test')
-        self.goal = self.create_publisher(PoseStamped, '/evtol/pilot_goal', 10)
+        self.goal = self.create_publisher(PoseStamped, '/avoidance_sim/pilot_goal', 10)
         self.cmd = self.create_publisher(VehicleCommand,
                                          '/fmu/in/vehicle_command', QOS)
         self.create_subscription(VehicleLocalPosition,

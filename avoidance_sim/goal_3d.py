@@ -55,7 +55,7 @@ class Goal3D(Node):
 
         self.server = InteractiveMarkerServer(self, 'goal_3d')
         self.pilot_goal = self.create_publisher(
-            PoseStamped, '/evtol/pilot_goal', 10)
+            PoseStamped, '/avoidance_sim/pilot_goal', 10)
         self.menu = MenuHandler()
         self.menu.insert('FLY HERE (avoidance ON)',
                          callback=lambda fb: self.fly_piloted())
