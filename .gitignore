@@ -1,0 +1,18 @@
+# colcon / ament
+build/
+install/
+log/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# runtime noise
+*.log

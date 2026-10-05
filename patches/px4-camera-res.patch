@@ -1,0 +1,24 @@
+diff --git a/models/OakD-Lite/model.sdf b/models/OakD-Lite/model.sdf
+index 15a418c..b493307 100644
+--- a/models/OakD-Lite/model.sdf
++++ b/models/OakD-Lite/model.sdf
+@@ -58,8 +58,8 @@
+         <camera>
+           <horizontal_fov>1.274</horizontal_fov>
+           <image>
+-            <width>640</width>
+-            <height>480</height>
++            <width>320</width>
++            <height>240</height>
+             <format>R_FLOAT32</format>
+           </image>
+           <clip>
+@@ -68,7 +68,7 @@
+           </clip>
+         </camera>
+         <always_on>1</always_on>
+-        <update_rate>30</update_rate>
++        <update_rate>15</update_rate>
+         <visualize>true</visualize>
+         <topic>depth_camera</topic>
+       </sensor>

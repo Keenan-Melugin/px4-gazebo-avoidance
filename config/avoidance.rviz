@@ -1,0 +1,164 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /DepthCloud1
+      Splitter Ratio: 0.5
+    Tree Height: 640
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 40
+      Color: 110; 110; 110
+      Line Style:
+        Value: Lines
+      Reference Frame: odom
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: true
+      Marker Scale: 1.2
+      Show Arrows: false
+      Show Axes: true
+      Show Names: false
+      Update Interval: 0.2
+    - Class: rviz_default_plugins/PointCloud2
+      Name: DepthCloud
+      Enabled: true
+      Topic:
+        Value: /depth_camera/points
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+        History Policy: Keep Last
+      Style: Points
+      Size (Pixels): 3
+      Alpha: 1
+      Color Transformer: AxisColor
+      Axis: Z
+      Autocompute Intensity Bounds: true
+      Decay Time: 0
+      Position Transformer: XYZ
+    - Class: rviz_default_plugins/Marker
+      Name: Drone
+      Enabled: true
+      Topic:
+        Value: /drone
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Name: Goal3D
+      Enabled: true
+      Interactive Markers Namespace: /goal_3d
+      Show Axes: false
+      Show Descriptions: true
+      Show Visual Aids: true
+    - Class: rviz_default_plugins/InteractiveMarkers
+      Name: PX4Commands
+      Enabled: true
+      Interactive Markers Namespace: /px4_commands
+      Show Axes: false
+      Show Descriptions: true
+      Show Visual Aids: false
+    - Class: rviz_default_plugins/MarkerArray
+      Name: GazeboWorld
+      Enabled: true
+      Topic:
+        Value: /world_markers
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Marker
+      Name: Goal
+      Enabled: true
+      Topic:
+        Value: /goal_marker
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Pose
+      Name: GoalPose
+      Enabled: true
+      Topic:
+        Value: /goal_pose
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Shape: Arrow
+      Color: 255; 190; 25
+      Alpha: 1
+      Shaft Length: 1
+      Shaft Radius: 0.08
+      Head Length: 0.3
+      Head Radius: 0.16
+  Enabled: true
+  Global Options:
+    Background Color: 38; 40; 46
+    Fixed Frame: odom
+    Frame Rate: 15
+  Name: root
+  Default Tool: rviz_default_plugins/Interact
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: rviz_default_plugins/PublishPoint
+      Topic:
+        Value: /clicked_point
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Single click: false
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 26
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 0.72
+      Yaw: 2.4
+      Target Frame: odom
+      Value: Orbit (rviz_default_plugins)
+    Saved: ~
+Window Geometry:
+  Height: 900
+  Width: 1500
+  Displays:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false

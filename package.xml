@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>avoidance_sim</name>
+  <version>0.1.0</version>
+  <description>Depth-camera obstacle avoidance for PX4 SITL in Gazebo Harmonic, flown from RViz. A ROS 2 node turns the depth cloud into the polar histogram PX4 expects, and a software pilot streams synthetic manual control so the aircraft stays in the one flight mode where PX4 applies collision prevention.</description>
+
+  <maintainer email="Keenan-Melugin@users.noreply.github.com">Keenan Melugin</maintainer>
+  <license>TODO: choose a license before publishing</license>
+
+  <depend>rclpy</depend>
+  <depend>px4_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
+  <depend>visualization_msgs</depend>
+  <depend>interactive_markers</depend>
+  <depend>tf2_ros</depend>
+  <depend>python3-numpy</depend>
+  <depend>python3-scipy</depend>
+
+  <!-- Needed to run, not to build. The bridge carries the depth cloud and the
+       simulation clock out of Gazebo; rviz2 is how the aircraft is flown. -->
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
