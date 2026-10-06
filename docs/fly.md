@@ -12,6 +12,14 @@ the planned path (green ribbon), the 2D scan Nav2 sees (orange points), pure
 pursuit's lookahead point (magenta) and its collision-check arc (red), and a
 Navigation 2 panel docked beside Displays.
 
+![RViz in brake mode: the aircraft 3 m from a wall, facing it; the depth cloud on the wall; the green goal ball with its arrows and ring; the orange ball above the aircraft](img/rviz-overview.png)
+
+The same moment in Gazebo. Terminal 1 ran with `HEADLESS=1`, so this window
+was attached afterwards with `gz sim -g` in another terminal, which connects
+a GUI to the running server without a restart.
+
+![Gazebo: the x500 quadrotor with its depth camera, hovering by the wall](img/gazebo.png)
+
 One display ships switched off: the local costmap. On the development
 machine, enabling it crashed RViz through an OGRE shader fault in the Map
 display. Tick it on in Displays if your driver copes; the scan and plan
@@ -88,6 +96,8 @@ slide along the path ahead of the aircraft, and the red arc swing with the
 path. `detected collision ahead!` in terminal 2 is pure pursuit objecting to a
 freshly marked wall cell under its path; the bundled behaviour tree clears the
 local costmap, waits and replans, so only `Goal failed` is a real failure.
+
+![RViz in plan mode: the green ribbon routes round the end of box2, the magenta lookahead point sits ahead of the aircraft, and the Navigation 2 panel reports the distance remaining](img/rviz-plan.png)
 
 For a clean run, start far enough back. The camera covers 1.48 times its
 range in width, so to see both ends of a 10 m wall the aircraft needs about

@@ -9,6 +9,8 @@ waypoints by streaming synthetic manual control, which keeps PX4 in the one
 flight mode where its collision prevention applies. Fly it at a wall and it
 brakes. Switch avoidance off and it hits the wall.
 
+![RViz: the aircraft facing a wall, the depth cloud painting it, the green goal ball and the orange command ball](docs/img/rviz-overview.png)
+
 ## Start here
 
 | You want to | Read |

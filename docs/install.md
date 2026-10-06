@@ -143,7 +143,9 @@ cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 
 `HEADLESS=1` suppresses the Gazebo window and buys back 10 to 45% of
 real-time factor; the server still renders the depth camera. Drop it to watch
-in Gazebo as well as RViz. This terminal becomes PX4's own shell, `pxh>`.
+in Gazebo as well as RViz. To attach a Gazebo window later without a restart, run `gz sim -g` in another
+terminal; it joins the running server. Measured once: real-time factor 0.98
+with a window attached that way. This terminal becomes PX4's own shell, `pxh>`.
 
 Terminal 2, everything else:
 
