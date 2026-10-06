@@ -9,7 +9,7 @@ import math
 
 from rclpy.node import Node
 
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
 from px4_msgs.msg import (ManualControlSetpoint,
     VehicleCommand,
     VehicleLocalPosition,
@@ -88,6 +88,24 @@ class SoftwarePilot(Node):
     YAW_TOL = math.radians(3.0)         # inside this, stop turning
     ARRIVED_YAW = math.radians(8.0)
     YAW_GIVE_UP_TICKS = 1500            # 30 s at 50 Hz
+
+    # Velocity mode, used when Nav2 is driving. The XY stick has the same kind
+    # of dead band as yaw, measured by sweeping pitch and reading the steady
+    # ground speed back:
+    #     stick  0.02  0.04  0.06  0.08  0.10 | 0.15  0.25  0.40
+    #     m/s    0.00  0.00  0.00  0.00  0.00 | 0.20  0.64  1.45
+    # Least squares over the moving points: speed = (stick - 0.114) * 5.02.
+    # So full stick is about 4.4 m/s even though MPC_VEL_MANUAL says 10.0;
+    # scaling off that parameter would under-command by more than double.
+    # The slope is fitted over 0.15 to 0.40, so treat it as valid for the
+    # gentle velocities Nav2 asks for, not as a top-speed figure.
+    XY_DZ = 0.114                       # stick that produces no motion
+    VEL_PER_STICK = 5.02                # m/s per unit of stick above XY_DZ
+    CMD_VEL_TIMEOUT = 0.5               # s. Matches COM_RC_LOSS_T.
+    # Heading follows the direction of travel while Nav2 drives, so the
+    # camera looks along the path rather than wherever the nose was left.
+    ALIGN_MIN_SPEED = 0.25              # m/s. Below this, do not chase noise.
+    KP_ALIGN = 1.0                      # rad/s per rad of misalignment
     DEADBAND = 0.4     # m
     ARRIVED = 0.6      # m
 
@@ -102,6 +120,10 @@ class SoftwarePilot(Node):
                                  self.on_status, PX4_QOS)
         self.create_subscription(PoseStamped, '/avoidance_sim/pilot_goal',
                                  self.on_goal, 10)
+        # Nav2's output. Fresh messages here take precedence over a goal:
+        # Nav2 is already doing the position control, so the pilot drops to
+        # being a velocity-to-stick converter plus an altitude hold.
+        self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         self.cmd = self.create_publisher(
             VehicleCommand, '/fmu/in/vehicle_command', PX4_QOS)
 
@@ -121,6 +143,10 @@ class SoftwarePilot(Node):
         self.nav = None
         self.goal = None         # (north, east, alt)
         self.goal_yaw = None     # NED heading, radians. None = do not turn.
+        self.cmd_vel = None      # (vx, vy, wz) in base_link FLU
+        self.cmd_vel_t = 0.0
+        self.hold_alt = None     # altitude to keep while Nav2 drives XY
+        self.vel_mode = False
         self.yaw_rate = 0.0      # differentiated heading, for damping
         self._yaw_ticks = 0      # how long we have been chasing a heading
         self._last_yaw = None
@@ -191,6 +217,24 @@ class SoftwarePilot(Node):
         # Position mode is enterable because we are already streaming sticks.
         self.request_posctl()
 
+    def on_cmd_vel(self, m):
+        self.cmd_vel = (m.linear.x, m.linear.y, m.angular.z)
+        self.cmd_vel_t = self.now_s()
+
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def stick_for(self, v):
+        """Velocity to stick, stepping over the measured dead band.
+
+        Below a hair of a m/s, command nothing: offsetting past the dead band
+        for a near-zero velocity would make the aircraft creep.
+        """
+        if abs(v) < 0.03:
+            return 0.0
+        u = self.XY_DZ + abs(v) / self.VEL_PER_STICK
+        return math.copysign(min(1.0, u), v)
+
     def request_posctl(self):
         c = VehicleCommand()
         c.timestamp = self.get_clock().now().nanoseconds // 1000
@@ -219,7 +263,66 @@ class SoftwarePilot(Node):
         m.data_source = ManualControlSetpoint.SOURCE_MAVLINK_0
         m.roll = m.pitch = m.yaw = m.throttle = 0.0
 
-        if self.active and self.goal is not None and self.pos is not None:
+        fresh = (self.cmd_vel is not None
+                 and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+
+        if fresh and self.pos is not None:
+            # ---- Nav2 is driving ----
+            if not self.vel_mode:
+                self.vel_mode = True
+                self.hold_alt = -self.pos[2]
+                self.active = False          # a stale goal must not fight it
+                self.goal = None
+                self.get_logger().info(
+                    f'velocity mode: Nav2 driving, holding '
+                    f'{self.hold_alt:.1f} m. CP still active.')
+                self.request_posctl()
+            vx, vy, wz = self.cmd_vel
+            # pitch is forward, roll is right. base_link FLU y is LEFT, so a
+            # positive vy means go left, which is negative roll.
+            m.pitch = float(self.pitch_sign * self.stick_for(vx))
+            m.roll = float(self.roll_sign * self.stick_for(-vy))
+            # Point the camera where we are going.
+            #
+            # This is not cosmetic. The depth camera sees a 73 degree forward
+            # arc and nothing else, so a 2D planner working off that costmap
+            # only knows about the slice the nose happens to be facing. Flying
+            # sideways means planning blind: each replan sees a different
+            # slice, the planner flip-flops between routes, and the controller
+            # dithers. Measured without this: the commanded sideways velocity
+            # alternated sign every few seconds and the aircraft never
+            # committed to a detour.
+            #
+            # So the heading is slaved to the direction of travel. Nav2's own
+            # yaw rate is used instead whenever it asks for one.
+            speed = math.hypot(vx, vy)
+            if abs(wz) > 0.02:
+                want_rate = -wz           # FLU anticlockwise -> clockwise stick
+            elif speed > self.ALIGN_MIN_SPEED:
+                # atan2(left, forward): positive means the velocity points
+                # left of the nose, so the nose must turn anticlockwise.
+                off = math.atan2(vy, vx)
+                want_rate = -self.KP_ALIGN * off
+            else:
+                want_rate = 0.0
+            want_rate = max(-self.YAW_RATE_MAX,
+                            min(self.YAW_RATE_MAX, want_rate))
+            if abs(want_rate) > 0.02:
+                u = self.YAW_DZ + abs(want_rate) / self.YAW_RATE_PER_STICK
+                m.yaw = float(self.yaw_sign * math.copysign(min(1.0, u),
+                                                            want_rate))
+            # Nav2 knows nothing about altitude, so the pilot keeps it.
+            n, e, d = self.pos
+            vn, ve, vd = self.vel
+            ez = self.hold_alt - (-d)
+            u_z = self.KP_Z * ez - self.KD_Z * (-vd)
+            if math.isfinite(u_z):
+                m.throttle = float(max(-1.0, min(1.0, u_z)))
+
+        elif self.active and self.goal is not None and self.pos is not None:
+            if self.vel_mode:
+                self.vel_mode = False
+                self.get_logger().info('velocity mode off, back to goals')
             gn, ge, galt = self.goal
             n, e, d = self.pos
             en, ee = gn - n, ge - e
@@ -302,6 +405,13 @@ class SoftwarePilot(Node):
         self.pub.publish(m)
 
     def report(self):
+        if self.vel_mode and self.pos is not None:
+            vx, vy, wz = self.cmd_vel or (0.0, 0.0, 0.0)
+            self.get_logger().info(
+                f'nav={self.nav} Nav2 vel fwd{vx:+.2f} left{vy:+.2f} '
+                f'yaw{wz:+.2f} alt{-self.pos[2]:.1f}/{self.hold_alt:.1f} '
+                f'(CP {"ACTIVE" if self.nav == 2 else "INACTIVE"})')
+            return
         if not self.active or self.goal is None or self.pos is None:
             return
         gn, ge, galt = self.goal

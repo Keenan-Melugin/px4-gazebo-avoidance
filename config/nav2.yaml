@@ -1,0 +1,249 @@
+# Nav2 for a hovering multirotor with a forward depth camera.
+#
+# Three things make this different from a ground robot, and each one is a
+# decision rather than a default:
+#
+# 1. There is no map and no localisation. PX4's EKF already gives metric
+#    odometry, so the global frame is `odom`, not `map`, and there is no
+#    AMCL, no map_server and no static layer. Nav2 works this way but every
+#    tutorial assumes otherwise, so every frame below says odom deliberately.
+#
+# 2. Nav2 is 2D. The aircraft flies at an altitude the planner knows nothing
+#    about: it plans in the horizontal plane and altitude stays with the
+#    software pilot. A wall that stops short of the aircraft's height is
+#    still an obstacle as far as this is concerned.
+#
+# 3. The costmap sees a 73 degree forward arc, not 360. Anything outside it
+#    is unknown rather than clear, so the robot cannot be trusted to plan
+#    through space it has never looked at. Hence rolling windows, a short
+#    horizon and no attempt at a global map of the world.
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: True
+      rolling_window: true
+      width: 20
+      height: 20
+      resolution: 0.1
+      # A multirotor is round, so a radius rather than a footprint polygon.
+      # 0.3 m is the x500 airframe, not the propeller tips.
+      robot_radius: 0.3
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 18.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 15.0
+          obstacle_min_range: 0.0
+          inf_is_valid: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        # Must exceed robot_radius (0.3) or the planner will graze walls, but
+        # keep it tight: at 1.2 m the aircraft ends up sitting inside inflated
+        # space when it rounds the end of a wall, every MPPI sample then
+        # scores as a collision, and the controller aborts with "Optimizer
+        # fail to compute path". PX4's own braking is the backstop for the
+        # margin this gives up.
+        inflation_radius: 0.75
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: True
+      # Rolling, because there is no map. The planner only ever reasons about
+      # the neighbourhood the camera has actually seen.
+      rolling_window: true
+      width: 50
+      height: 50
+      resolution: 0.1
+      robot_radius: 0.3
+      plugins: ["obstacle_layer", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          raytrace_max_range: 18.0
+          obstacle_max_range: 15.0
+          inf_is_valid: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.75
+      always_send_full_costmap: True
+
+planner_server:
+  ros__parameters:
+    use_sim_time: True
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.6
+      use_astar: true
+      # false: a multirotor can fly diagonally, it is not differential drive.
+      allow_unknown: false
+
+controller_server:
+  ros__parameters:
+    use_sim_time: True
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 20.0
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.6
+      yaw_goal_tolerance: 6.28     # heading is the pilot's job, not Nav2's
+      stateful: True
+    FollowPath:
+      # MPPI samples candidate trajectories, which suits a holonomic aircraft
+      # better than a pure-pursuit controller written for car-like motion.
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 40
+      model_dt: 0.1
+      batch_size: 1000
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+      vx_max: 2.0
+      vx_min: -1.0
+      vy_max: 2.0          # non-zero: the aircraft can strafe
+      wz_max: 1.0
+      iteration_count: 1
+      prune_distance: 8.0
+      transform_tolerance: 0.2
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "Omni"   # NOT DiffDrive: this thing flies sideways
+      visualize: true
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 3
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.5
+        critical_weight: 20.0
+        consider_footprint: false
+        collision_cost: 10000.0
+        collision_margin_distance: 0.25
+        near_goal_distance: 0.5
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: True
+    global_frame: odom
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    # Nav2's DEFAULT tree calls the Spin and BackUp recovery behaviours, and
+    # the behaviour_server above deliberately does not load them: a flying
+    # aircraft spinning or reversing blindly is worse than stopping. With the
+    # default tree the load then fails outright and the lifecycle manager
+    # stops there, taking bt_navigator and velocity_smoother with it.
+    # This tree replans on a timer and calls no recoveries.
+    #
+    # It must be set HERE, at the top level. Jazzy also declares
+    # navigate_to_pose.default_nav_to_pose_bt_xml, and setting only that one
+    # is silently ignored: the plugin-scoped value is accepted and the
+    # top-level default is what actually gets loaded.
+    default_nav_to_pose_bt_xml:
+      "/opt/ros/jazzy/share/nav2_bt_navigator/behavior_trees/navigate_w_replanning_time.xml"
+    navigators: ["navigate_to_pose"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: True
+    local_costmap_topic: local_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_costmap_topic: global_costmap/costmap_raw
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    # No spin or back-up: those are ground-robot recoveries and a flying
+    # aircraft reversing blindly is worse than stopping.
+    behavior_plugins: ["wait"]
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    local_frame: odom
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.2
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: True
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    max_velocity: [2.0, 2.0, 1.0]
+    min_velocity: [-1.0, -2.0, -1.0]
+    max_accel: [1.5, 1.5, 2.0]
+    max_decel: [-1.5, -1.5, -2.0]
+    odom_topic: "/odom"
+    odom_duration: 0.1
