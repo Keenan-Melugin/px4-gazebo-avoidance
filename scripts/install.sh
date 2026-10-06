@@ -115,7 +115,12 @@ else
 fi
 
 # Ask for sudo now rather than an hour into the agent build.
-sudo -v || fail "this needs sudo to install the agent into /usr/local."
+# Not plain `sudo -v`. With sudo's default verifypw=all, -v demands a password
+# whenever ANY rule matching the user lacks NOPASSWD, so a user who can already
+# run sudo without a password (Raspberry Pi and cloud images, where the first
+# user is also in the sudo group) is told to type one they may not have.
+# Found by this repo's own clean-clone test on its first run.
+sudo -n true 2>/dev/null || sudo -v || fail "this needs sudo to install the agent into /usr/local."
 ok "sudo"
 
 # ------------------------------------------------------------------ the agent

@@ -42,7 +42,12 @@ ARCH=$(dpkg --print-architecture)
 ok "Ubuntu 24.04 / noble ($ARCH)"
 
 # Ask for sudo now rather than halfway through a download.
-sudo -v || fail "this needs sudo to install packages."
+# Not plain `sudo -v`. With sudo's default verifypw=all, -v demands a password
+# whenever ANY rule matching the user lacks NOPASSWD, so a user who can already
+# run sudo without a password (Raspberry Pi and cloud images, where the first
+# user is also in the sudo group) is told to type one they may not have.
+# Found by this repo's own clean-clone test on its first run.
+sudo -n true 2>/dev/null || sudo -v || fail "this needs sudo to install packages."
 ok "sudo"
 
 # ------------------------------------------------------------------- locale
