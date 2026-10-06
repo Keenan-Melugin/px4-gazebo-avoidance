@@ -50,6 +50,10 @@ class ObstacleDistancePublisher(Node):
         # from 10 Hz to ~2 Hz. Every Nth point is plenty for a 72-bin histogram.
         p('decimate', 8)
         p('diagnostics', True)
+        # A cloud older than this is not published: PX4's own stream timeout
+        # (0.5 s) then holds the aircraft instead of flying on a frozen
+        # histogram. 1.0 s covers the slowest measured camera (2.2 Hz).
+        p('stale_s', 1.0)
 
         g = lambda n: self.get_parameter(n).value
         self.cloud_frame = g('cloud_frame')
@@ -59,6 +63,7 @@ class ObstacleDistancePublisher(Node):
         self.band = float(g('height_band_m'))
         self.mount = np.array(g('mount_xyz_frd'), dtype=np.float64)
         self.diag = bool(g('diagnostics'))
+        self.stale_s = float(g('stale_s'))
         self.decimate = max(1, int(g('decimate')))
 
         # Which bins the camera can see at all. Everything else stays "unknown".
@@ -90,6 +95,13 @@ class ObstacleDistancePublisher(Node):
         self.latest = None
         self.create_timer(1.0 / float(g('publish_hz')), self.on_timer)
         self._logged_frame = False
+        # Validity of the last cloud, separately from its content. None
+        # content with a valid cloud means open space; an invalid cloud
+        # means the camera is not producing depth and nothing is published.
+        self.last_cloud_t = None
+        self.cloud_valid = False
+        self._nan_frames = 0
+        self._warned_stale = False
 
     # ------------------------------------------------------------------
     def to_frd(self, pts: np.ndarray) -> np.ndarray:
@@ -104,17 +116,34 @@ class ObstacleDistancePublisher(Node):
         return frd + self.mount
 
     def on_cloud(self, msg: PointCloud2):
+        self.last_cloud_t = self.get_clock().now().nanoseconds * 1e-9
+        self._warned_stale = False
         pts = point_cloud2.read_points_numpy(
-            msg, field_names=('x', 'y', 'z'), skip_nans=True)
-        if pts.size == 0:
+            msg, field_names=('x', 'y', 'z'), skip_nans=False)
+        # Gazebo marks beyond-range pixels +/-inf, which is a real observation
+        # of open space. NaN is something else: a renderer that produced no
+        # depth at all. Measured in a VMware VM under Gazebo's default ogre2:
+        # 0 of 76,800 points finite in every frame, and the old code turned
+        # that into "clear" in every bin. Treat an all-NaN cloud as no data.
+        n_total = int(pts.shape[0])
+        n_nan = int(np.isnan(pts).any(axis=1).sum()) if n_total else 0
+        if n_total == 0 or n_nan >= 0.99 * n_total:
+            self._nan_frames += 1
+            self.cloud_valid = False
             self.latest = None
+            if self._nan_frames == 5 or self._nan_frames % 200 == 0:
+                self.get_logger().warn(
+                    f'depth cloud is all NaN ({n_nan} of {n_total} points) for '
+                    f'{self._nan_frames} frames: the renderer is producing no '
+                    f'depth. Not publishing, so PX4 will hold. Measured cause on '
+                    f'VMware: Gazebo\'s default renderer on the SVGA3D GPU; start '
+                    f'PX4 with PX4_GZ_SIM_RENDER_ENGINE=ogre.')
             return
-        # Gazebo emits +/-inf for no-return pixels. skip_nans does not catch
-        # those. The range gate below happens to reject them, but rely on it
-        # explicitly rather than by accident.
+        self._nan_frames = 0
+        self.cloud_valid = True
         pts = pts[np.isfinite(pts).all(axis=1)]
         if pts.size == 0:
-            self.latest = None
+            self.latest = None          # a valid cloud with nothing in range
             return
         if self.decimate > 1:
             pts = pts[::self.decimate]
@@ -158,6 +187,17 @@ class ObstacleDistancePublisher(Node):
         self.latest = nearest
 
     def on_timer(self):
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if not self.cloud_valid or self.last_cloud_t is None:
+            return                      # no usable camera: PX4 holds on its own timeout
+        if now - self.last_cloud_t > self.stale_s:
+            if not self._warned_stale:
+                self._warned_stale = True
+                self.get_logger().warn(
+                    f'no depth cloud for {now - self.last_cloud_t:.1f} s: not '
+                    f'publishing, so PX4 will hold rather than fly on a frozen '
+                    f'histogram.')
+            return
         m = ObstacleDistance()
         m.timestamp = self.get_clock().now().nanoseconds // 1000
         m.frame = ObstacleDistance.MAV_FRAME_BODY_FRD      # 12. Not the default.
