@@ -1,184 +1,229 @@
 Panels:
-  - Class: rviz_common/Displays
-    Name: Displays
-    Property Tree Widget:
-      Expanded:
-        - /Global Options1
-        - /DepthCloud1
-      Splitter Ratio: 0.5
-    Tree Height: 640
-  - Class: rviz_common/Tool Properties
-    Name: Tool Properties
-  - Class: rviz_common/Views
-    Name: Views
+- Class: rviz_common/Displays
+  Name: Displays
+  Property Tree Widget:
+    Expanded:
+    - /Global Options1
+    - /DepthCloud1
+    Splitter Ratio: 0.5
+  Tree Height: 640
+- Class: rviz_common/Tool Properties
+  Name: Tool Properties
+- Class: rviz_common/Views
+  Name: Views
+- Class: nav2_rviz_plugins/Navigation 2
+  Name: Navigation 2
 Visualization Manager:
-  Class: ""
+  Class: ''
   Displays:
-    - Class: rviz_default_plugins/Grid
-      Name: Grid
-      Enabled: true
-      Cell Size: 1
-      Plane Cell Count: 40
-      Color: 110; 110; 110
-      Line Style:
-        Value: Lines
-      Reference Frame: odom
-    - Class: rviz_default_plugins/TF
-      Name: TF
-      Enabled: true
-      Marker Scale: 1.2
-      Show Arrows: false
-      Show Axes: true
-      Show Names: false
-      Update Interval: 0.2
-    - Class: rviz_default_plugins/PointCloud2
-      Name: DepthCloud
-      Enabled: true
-      Topic:
-        Value: /depth_camera/points
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Best Effort
-        History Policy: Keep Last
-      Style: Points
-      Size (Pixels): 3
-      Alpha: 1
-      Color Transformer: AxisColor
-      Axis: Z
-      Autocompute Intensity Bounds: true
-      Decay Time: 0
-      Position Transformer: XYZ
-    - Class: rviz_default_plugins/Marker
-      Name: Drone
-      Enabled: true
-      Topic:
-        Value: /drone
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-        History Policy: Keep Last
-    - Class: rviz_default_plugins/InteractiveMarkers
-      Name: Goal3D
-      Enabled: true
-      Interactive Markers Namespace: /goal_3d
-      Show Axes: false
-      Show Descriptions: true
-      Show Visual Aids: true
-    - Class: rviz_default_plugins/InteractiveMarkers
-      Name: PX4Commands
-      Enabled: true
-      Interactive Markers Namespace: /px4_commands
-      Show Axes: false
-      Show Descriptions: true
-      Show Visual Aids: false
-    - Class: rviz_default_plugins/MarkerArray
-      Name: GazeboWorld
-      Enabled: true
-      Topic:
-        Value: /world_markers
-        Depth: 1
-        Durability Policy: Transient Local
-        Reliability Policy: Reliable
-        History Policy: Keep Last
-    - Class: rviz_default_plugins/Marker
-      Name: Goal
-      Enabled: true
-      Topic:
-        Value: /goal_marker
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-        History Policy: Keep Last
-    - Alpha: 0.55
-      Class: rviz_default_plugins/Map
-      Color Scheme: costmap
-      Draw Behind: true
-      Enabled: false
-      Name: local costmap (off by default, see COMMANDS.md)
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /local_costmap/costmap
-      Update Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /local_costmap/costmap_updates
-      Use Timestamp: false
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 25; 255; 25
-      Enabled: true
-      Head Diameter: 0.3
-      Head Length: 0.2
-      Length: 0.3
-      Line Style: Lines
-      Line Width: 0.03
-      Name: Nav2 plan
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.1
-      Shaft Length: 0.1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /plan
-      Value: true
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Class: rviz_default_plugins/LaserScan
-      Color: 255; 85; 0
-      Color Transformer: FlatColor
-      Decay Time: 0
-      Enabled: true
-      Max Intensity: 4096
-      Min Intensity: 0
-      Name: scan (what Nav2 sees)
-      Position Transformer: XYZ
-      Selectable: true
-      Size (Pixels): 5
-      Size (m): 0.01
-      Style: Points
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /scan
-      Use Fixed Frame: true
-      Use rainbow: true
-      Value: true
-    - Class: rviz_default_plugins/Pose
-      Name: GoalPose
-      Enabled: true
-      Topic:
-        Value: /goal_pose
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-        History Policy: Keep Last
-      Shape: Arrow
-      Color: 255; 190; 25
-      Alpha: 1
-      Shaft Length: 1
-      Shaft Radius: 0.08
-      Head Length: 0.3
-      Head Radius: 0.16
+  - Class: rviz_default_plugins/Grid
+    Name: Grid
+    Enabled: true
+    Cell Size: 1
+    Plane Cell Count: 40
+    Color: 110; 110; 110
+    Line Style:
+      Value: Lines
+    Reference Frame: odom
+  - Class: rviz_default_plugins/TF
+    Name: TF
+    Enabled: true
+    Marker Scale: 1.2
+    Show Arrows: false
+    Show Axes: true
+    Show Names: false
+    Update Interval: 0.2
+  - Class: rviz_default_plugins/PointCloud2
+    Name: DepthCloud
+    Enabled: true
+    Topic:
+      Value: /depth_camera/points
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Best Effort
+      History Policy: Keep Last
+    Style: Points
+    Size (Pixels): 3
+    Alpha: 1
+    Color Transformer: AxisColor
+    Axis: Z
+    Autocompute Intensity Bounds: true
+    Decay Time: 0
+    Position Transformer: XYZ
+  - Class: rviz_default_plugins/Marker
+    Name: Drone
+    Enabled: true
+    Topic:
+      Value: /drone
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+  - Class: rviz_default_plugins/InteractiveMarkers
+    Name: Goal3D
+    Enabled: true
+    Interactive Markers Namespace: /goal_3d
+    Show Axes: false
+    Show Descriptions: true
+    Show Visual Aids: true
+  - Class: rviz_default_plugins/InteractiveMarkers
+    Name: PX4Commands
+    Enabled: true
+    Interactive Markers Namespace: /px4_commands
+    Show Axes: false
+    Show Descriptions: true
+    Show Visual Aids: false
+  - Class: rviz_default_plugins/MarkerArray
+    Name: GazeboWorld
+    Enabled: true
+    Topic:
+      Value: /world_markers
+      Depth: 1
+      Durability Policy: Transient Local
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+  - Class: rviz_default_plugins/Marker
+    Name: Goal
+    Enabled: true
+    Topic:
+      Value: /goal_marker
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+  - Alpha: 0.55
+    Class: rviz_default_plugins/Map
+    Color Scheme: costmap
+    Draw Behind: true
+    Enabled: false
+    Name: local costmap (off by default, see COMMANDS.md)
+    Topic:
+      Depth: 1
+      Durability Policy: Transient Local
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap
+    Update Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /local_costmap/costmap_updates
+    Use Timestamp: false
+    Value: true
+  - Alpha: 1
+    Buffer Length: 1
+    Class: rviz_default_plugins/Path
+    Color: 25; 255; 25
+    Enabled: true
+    Head Diameter: 0.3
+    Head Length: 0.2
+    Length: 0.3
+    Line Style: Billboards
+    Line Width: 0.12
+    Name: Nav2 plan
+    Offset:
+      X: 0
+      Y: 0
+      Z: 0
+    Pose Color: 255; 85; 255
+    Pose Style: None
+    Radius: 0.03
+    Shaft Diameter: 0.1
+    Shaft Length: 0.1
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /plan
+    Value: true
+  - Alpha: 1
+    Autocompute Intensity Bounds: true
+    Class: rviz_default_plugins/LaserScan
+    Color: 255; 85; 0
+    Color Transformer: FlatColor
+    Decay Time: 0
+    Enabled: true
+    Max Intensity: 4096
+    Min Intensity: 0
+    Name: scan (what Nav2 sees)
+    Position Transformer: XYZ
+    Selectable: true
+    Size (Pixels): 5
+    Size (m): 0.01
+    Style: Points
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Best Effort
+      Value: /scan
+    Use Fixed Frame: true
+    Use rainbow: true
+    Value: true
+  - Alpha: 1
+    Class: rviz_default_plugins/PointStamped
+    Color: 255; 0; 255
+    Enabled: true
+    History Length: 1
+    Name: RPP lookahead point
+    Radius: 0.25
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /lookahead_point
+    Value: true
+  - Alpha: 1
+    Buffer Length: 1
+    Class: rviz_default_plugins/Path
+    Color: 255; 60; 60
+    Enabled: true
+    Head Diameter: 0.3
+    Head Length: 0.2
+    Length: 0.3
+    Line Style: Billboards
+    Line Width: 0.08
+    Name: RPP collision check arc
+    Offset:
+      X: 0
+      Y: 0
+      Z: 0.05
+    Pose Color: 255; 85; 255
+    Pose Style: None
+    Radius: 0.03
+    Shaft Diameter: 0.1
+    Shaft Length: 0.1
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      Filter size: 10
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /lookahead_collision_arc
+    Value: true
+  - Class: rviz_default_plugins/Pose
+    Name: GoalPose
+    Enabled: true
+    Topic:
+      Value: /goal_pose
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+    Shape: Arrow
+    Color: 255; 190; 25
+    Alpha: 1
+    Shaft Length: 1
+    Shaft Radius: 0.08
+    Head Length: 0.3
+    Head Radius: 0.16
   Enabled: true
   Global Options:
     Background Color: 38; 40; 46
@@ -187,28 +232,29 @@ Visualization Manager:
   Name: root
   Default Tool: rviz_default_plugins/Interact
   Tools:
-    - Class: rviz_default_plugins/Interact
-      Hide Inactive Objects: true
-    - Class: rviz_default_plugins/MoveCamera
-    - Class: rviz_default_plugins/Select
-    - Class: rviz_default_plugins/FocusCamera
-    - Class: rviz_default_plugins/Measure
-      Line color: 128; 128; 0
-    - Class: rviz_default_plugins/PublishPoint
-      Topic:
-        Value: /clicked_point
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-        History Policy: Keep Last
-      Single click: false
-    - Class: rviz_default_plugins/SetGoal
-      Topic:
-        Value: /goal_pose
-        Depth: 5
-        Durability Policy: Volatile
-        Reliability Policy: Reliable
-        History Policy: Keep Last
+  - Class: rviz_default_plugins/Interact
+    Hide Inactive Objects: true
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/Select
+  - Class: rviz_default_plugins/FocusCamera
+  - Class: rviz_default_plugins/Measure
+    Line color: 128; 128; 0
+  - Class: rviz_default_plugins/PublishPoint
+    Topic:
+      Value: /clicked_point
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+    Single click: false
+  - Class: rviz_default_plugins/SetGoal
+    Topic:
+      Value: /goal_pose
+      Depth: 5
+      Durability Policy: Volatile
+      Reliability Policy: Reliable
+      History Policy: Keep Last
+  - Class: nav2_rviz_plugins/GoalTool
   Transformation:
     Current:
       Class: rviz_default_plugins/TF
@@ -226,7 +272,7 @@ Visualization Manager:
       Yaw: 2.4
       Target Frame: odom
       Value: Orbit (rviz_default_plugins)
-    Saved: ~
+    Saved: null
 Window Geometry:
   Height: 900
   Width: 1500
