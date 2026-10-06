@@ -84,6 +84,18 @@ cd ~/PX4-Autopilot && bash Tools/setup/ubuntu.sh
 add `--no-nuttx` to the setup script, because `gcc-multilib` does not exist
 there. Measured: clone 3 minutes for 2.8 GB, setup script 9.5 minutes.
 
+In a VMware virtual machine, one more line before logging out. PX4's setup
+script detects VMware and appends `export SVGA_VGPU10=0` to `~/.profile`, a
+fix for the old Gazebo Classic that today disables the OpenGL 3.3 core
+profile Gazebo Harmonic's renderer needs. Left in place, Gazebo dies at the
+first camera with `X Error of failed request: GLXBadFBConfig`. Measured on
+VMware Workstation 17.6: failing every time with the line, clean every time
+without it. Remove it:
+
+```bash
+sed -i '/SVGA_VGPU10/d' ~/.profile
+```
+
 Now log out and back in. This is not ritual: the setup script added you to
 the `dialout` group, and group changes take effect at login. On WSL,
 `wsl --terminate Ubuntu-24.04` from PowerShell and reopen the terminal does
@@ -252,7 +264,9 @@ If it says `llvmpipe`, the VM has no GPU acceleration and the simulation
 would run at a thirtieth of real time; fix the VM's display settings first.
 Then follow steps 1 to 4 as written, with two arm64 differences: step 2's
 setup script needs `--no-nuttx`, and `GALLIUM_DRIVER` must not be set, since
-that variable is WSL's and nothing else's.
+that variable is WSL's and nothing else's. If the hypervisor is VMware Fusion,
+step 2's `SVGA_VGPU10` note applies: PX4's setup script writes that line on
+any VMware guest.
 
 ## When it goes wrong
 
@@ -269,6 +283,7 @@ Paste its output when asking for help.
 | Real-time factor around 0.5 | The Gazebo window is open; use `HEADLESS=1` |
 | Aircraft only flies forwards | `CP_GO_NO_DATA` is 0 |
 | Aircraft will not arm | A goal is holding the throttle up: `STOP` on the green ball first. Or PX4 is still booting |
+| `X Error of failed request: GLXBadFBConfig` as the model spawns | `SVGA_VGPU10=0` in the environment, which PX4's setup script writes to `~/.profile` on VMware. Remove it; step 2 says how |
 
 The simulation degrades after an hour or two of flying, crashes and restarts:
 the aircraft drifts, ignores commands, or reports a position far from the
