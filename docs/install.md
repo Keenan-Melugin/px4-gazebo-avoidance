@@ -14,6 +14,8 @@ measured hardware table. Three cases to know about now:
 - **Windows.** WSL2 is the tested platform. Install Ubuntu 24.04 from the
   Microsoft Store or `wsl --install Ubuntu-24.04`, and make sure your GPU
   driver is current, because WSL reaches the GPU through it.
+- **Mac.** An Ubuntu 24.04 arm64 virtual machine with GPU acceleration, on a
+  Mac with 16 GB or more. Untested. Notes at the end.
 - **Raspberry Pi 5 on Ubuntu 24.04 arm64.** Untested. Notes at the end.
 - **Raspberry Pi OS or any other Debian.** Not possible: there are no ROS 2
   Jazzy packages for it.
@@ -200,7 +202,7 @@ RViz is up with the aircraft, the walls and a green goal ball. Go to
 | Ubuntu 24.04 on real hardware | Untested. Nothing here is WSL-specific; set no renderer variable, Mesa picks the driver itself |
 | Raspberry Pi 5, Ubuntu 24.04 arm64 | Untested. See below |
 | Raspberry Pi OS | No. No ROS 2 Jazzy packages exist for Debian |
-| macOS | Not attempted. Jazzy has no macOS binaries; an Ubuntu 24.04 arm64 VM is the practical route |
+| macOS, Apple Silicon or Intel | Untested. Through an Ubuntu 24.04 arm64 VM with GPU acceleration; see below |
 
 On a Pi 5 the known obstacle is the renderer. The Pi's Mesa V3D driver is
 reported to cap desktop OpenGL at 3.1, and Gazebo's default `ogre2` backend
@@ -216,7 +218,42 @@ Expect the builds to take far longer than the figures above and to risk the
 out-of-memory killer. Nobody has confirmed any of this on a Pi yet; if you do,
 the numbers belong in this file.
 
+### macOS
+
+Nothing here runs natively on macOS. ROS 2 Jazzy lists macOS as Tier 3,
+source build only, on both Intel and Apple Silicon (REP 2000), and this stack
+needs Nav2, Gazebo and PX4's bridge on top of that. The route is a virtual
+machine running Ubuntu 24.04 arm64, which is a Tier 1 ROS 2 platform with
+binary packages, and for which Gazebo Harmonic's apt repository also carries
+arm64 builds (its noble Release file lists `amd64 arm64 armhf`). Untested
+here: the first person to do it should run `scripts/report.sh` afterwards and
+send the output, and the numbers belong in this file.
+
+Give the VM at least 6 cores, 8 GB of memory and 30 GB of disk, and switch on
+its GPU acceleration. Four cores was marginal for flight in the clean-clone
+test, and 8 GB for the VM means a 16 GB Mac. UTM is free and its Ubuntu guide
+installs the "Ubuntu Server for ARM" image and then `sudo apt install
+ubuntu-desktop`; Parallels and VMware Fusion are alternatives. None of the
+three has been tried with this stack.
+
+Before step 1, check the one thing that decides whether the hour of builds is
+worth it:
+
+```bash
+sudo apt install -y mesa-utils && glxinfo -B | grep renderer
+```
+
+If it says `llvmpipe`, the VM has no GPU acceleration and the simulation
+would run at a thirtieth of real time; fix the VM's display settings first.
+Then follow steps 1 to 4 as written, with two arm64 differences: step 2's
+setup script needs `--no-nuttx`, and `GALLIUM_DRIVER` must not be set, since
+that variable is WSL's and nothing else's.
+
 ## When it goes wrong
+
+First, `scripts/report.sh`. It prints what the machine is, what is installed,
+the renderer, and the state of the running stack, with no sudo and no changes.
+Paste its output when asking for help.
 
 | Symptom | Cause |
 |---|---|

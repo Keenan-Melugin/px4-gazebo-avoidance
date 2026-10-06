@@ -50,7 +50,7 @@ real hardware. The airframe is PX4's `x500_depth`; plain `x500` has no camera.
 | CPU | 4 cores installs and runs it, with degraded flight dynamics under aggressive manoeuvres. 6 or more for the behaviour in the table above. Below 4 untested |
 | GPU | Hardware OpenGL 3.3 or better is a requirement, not a preference: software rendering runs at 0.033 real time. On WSL, `GALLIUM_DRIVER=d3d12` |
 | Time | About 1.5 hours on 4 cores and a spinning disk, nearly all of it waiting on package installs and builds |
-| OS | Ubuntu 24.04. WSL2 tested. Native Ubuntu untested, but nothing here is WSL-specific. Raspberry Pi 5 untested, see the install guide. Raspberry Pi OS cannot: no ROS 2 Jazzy packages exist for Debian |
+| OS | Ubuntu 24.04. WSL2 tested. Native Ubuntu untested, but nothing here is WSL-specific. Raspberry Pi 5 untested, see the install guide. Raspberry Pi OS cannot: no ROS 2 Jazzy packages exist for Debian. Mac: through an Ubuntu 24.04 arm64 VM, untested, see the install guide |
 
 ## Versions
 

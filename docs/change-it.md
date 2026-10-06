@@ -23,6 +23,7 @@ config/nav2.yaml        costmaps, planner, controller, tree. Every non-default i
 config/avoidance_bt.xml the behaviour tree Nav2 runs
 config/avoidance.rviz   the RViz layout
 scripts/px4_params.sh   the PX4 parameters the launch sets
+scripts/report.sh       what this machine is and what state the stack is in, for problem reports
 scripts/prereqs.sh      ROS 2, Gazebo and build tools
 scripts/install.sh      agent, px4_msgs, this package, Nav2
 patches/                the depth camera resolution change
