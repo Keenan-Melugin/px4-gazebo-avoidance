@@ -6,7 +6,7 @@
   <description>Depth-camera obstacle avoidance for PX4 SITL in Gazebo Harmonic, flown from RViz. A ROS 2 node turns the depth cloud into the polar histogram PX4 expects, and a software pilot streams synthetic manual control so the aircraft stays in the one flight mode where PX4 applies collision prevention.</description>
 
   <maintainer email="Keenan-Melugin@users.noreply.github.com">Keenan Melugin</maintainer>
-  <license>TODO: choose a license before publishing</license>
+  <license>BSD-3-Clause</license>
 
   <depend>rclpy</depend>
   <depend>px4_msgs</depend>
@@ -29,6 +29,19 @@
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>ros2launch</exec_depend>
+
+  <!-- The optional planning layer, nav2.launch.py. Declared here so rosdep
+       installs it alongside everything else. Before this was declared, a
+       clean clone could run sim.launch.py but nav2.launch.py died with
+       "package not found": the planner had only ever been installed by hand
+       on the development machine. navigation2 is the metapackage, which
+       pulls the planner, controller, costmap and behaviour-tree plugins that
+       config/nav2.yaml names, and the RViz plugins too. nav2_rviz_plugins is
+       still declared on its own because config/avoidance.rviz names it
+       directly; pointcloud_to_laserscan is not part of the metapackage. -->
+  <exec_depend>navigation2</exec_depend>
+  <exec_depend>nav2_rviz_plugins</exec_depend>
+  <exec_depend>pointcloud_to_laserscan</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Set up everything this package needs on a clean Ubuntu 24.04 machine.
+# Set up everything this package needs on an Ubuntu 24.04 machine that
+# already has ROS 2 Jazzy and Gazebo Harmonic. scripts/prereqs.sh installs
+# those; this script checks for them and stops if they are missing.
 #
 # Design goal: every step is checked, the script stops at the first failure,
 # and the message names the thing that actually failed. An earlier version
@@ -54,7 +56,8 @@ This will write to:
   $AGENT_SRC   the Micro XRCE-DDS Agent source and build
   /usr/local                   the agent binary and library, using sudo
 
-It does NOT install PX4 $PX4_VERSION. See the README for that.
+It does NOT install ROS 2 or Gazebo (that is scripts/prereqs.sh), nor PX4
+$PX4_VERSION (README, Install, step 2).
 EOF
 
 # ---------------------------------------------------------------- preflight
@@ -80,19 +83,24 @@ else
 fi
 
 [ -r /opt/ros/jazzy/setup.bash ] \
-  || fail "ROS 2 Jazzy not found. Expected /opt/ros/jazzy/setup.bash."
+  || fail "ROS 2 Jazzy not found. Expected /opt/ros/jazzy/setup.bash.
+        scripts/prereqs.sh installs it, with Gazebo and the build tools."
 ok "ROS 2 Jazzy"
 
 command -v colcon >/dev/null \
-  || fail "colcon not found. sudo apt install python3-colcon-common-extensions"
+  || fail "colcon not found. Run scripts/prereqs.sh, or
+        sudo apt install python3-colcon-common-extensions"
 command -v rosdep >/dev/null \
-  || fail "rosdep not found. sudo apt install python3-rosdep"
+  || fail "rosdep not found. Run scripts/prereqs.sh, or
+        sudo apt install python3-rosdep"
 for t in git cmake make g++; do
-  command -v "$t" >/dev/null || fail "$t not found. sudo apt install build-essential git cmake"
+  command -v "$t" >/dev/null || fail "$t not found. Run scripts/prereqs.sh, or
+        sudo apt install build-essential git cmake"
 done
 ok "build tools"
 
-command -v gz >/dev/null || fail "Gazebo not found. Install Gazebo Harmonic."
+command -v gz >/dev/null || fail "Gazebo not found. scripts/prereqs.sh installs
+        Gazebo Harmonic."
 if GZ_VER=$(gz sim --versions 2>/dev/null | head -1); then
   case "$GZ_VER" in
     8.*) ok "Gazebo Harmonic $GZ_VER" ;;
@@ -184,7 +192,8 @@ fi
 rosdep install --from-paths "$WS/src" --ignore-src -y --rosdistro jazzy \
   || fail "rosdep could not install the dependencies. The package needs
         ros_gz_bridge, rviz2, python3-scipy, sensor_msgs_py, interactive_markers
-        and tf2_ros_py."
+        and tf2_ros_py, plus navigation2, nav2_rviz_plugins and
+        pointcloud_to_laserscan for nav2.launch.py."
 ok "dependencies present"
 
 # -------------------------------------------------------------------- builds
@@ -256,7 +265,8 @@ cat <<EOF
     source $WS/install/setup.bash
 
     cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
-    ros2 launch avoidance_sim sim.launch.py
+    ros2 launch avoidance_sim sim.launch.py      # brake at walls
+    ros2 launch avoidance_sim nav2.launch.py     # or: plan a route round them
 
   Then, at the pxh> prompt in the PX4 terminal:
 
@@ -266,5 +276,5 @@ cat <<EOF
   The second one matters: the camera only sees 73 degrees ahead, and at its
   default of 0 PX4 refuses to accelerate in any direction it cannot see.
 
-  This script did NOT install PX4 $PX4_VERSION. See the README.
+  This script did NOT install PX4 $PX4_VERSION. See the README, Install, step 2.
 EOF

@@ -67,9 +67,27 @@ sensor geometry, not a result from this stack.
   is a different thing and will not work.
 - Hardware-accelerated OpenGL. See the real-time factor numbers above.
 
+`scripts/prereqs.sh` installs the ROS 2 and Gazebo line on a clean Ubuntu
+24.04. PX4 and the agent are Install steps 2 and 3.
+
 ## Install
 
-### 1. PX4
+### 1. ROS 2 Jazzy and Gazebo Harmonic
+
+```bash
+git clone https://github.com/Keenan-Melugin/px4-gazebo-avoidance.git ~/px4-gazebo-avoidance
+~/px4-gazebo-avoidance/scripts/prereqs.sh
+```
+
+On a clean Ubuntu 24.04 this adds the ROS 2 and Gazebo apt repositories and
+installs `ros-jazzy-desktop`, `ros-dev-tools`, `gz-harmonic` and
+`ros-jazzy-ros-gz`, following the two projects' own install pages command for
+command; the links are at the top of the script. Each step is skipped when
+its result is already there, so it is safe on a machine that has some of
+this. It runs a full `apt upgrade` first because the ROS 2 page asks for one.
+Afterwards, every new terminal needs `source /opt/ros/jazzy/setup.bash`.
+
+### 2. PX4
 
 `install.sh` deliberately does not do this, because it is a firmware build
 with its own setup script.
@@ -86,11 +104,10 @@ make px4_sitl                                        # slow the first time
 On arm64, `Tools/setup/ubuntu.sh` needs `--no-nuttx`, because `gcc-multilib`
 does not exist for that architecture.
 
-### 2. This package
+### 3. This package
 
 ```bash
-git clone https://github.com/Keenan-Melugin/px4-gazebo-avoidance.git
-cd px4-gazebo-avoidance
+cd ~/px4-gazebo-avoidance
 ./scripts/install.sh
 ```
 
@@ -103,7 +120,7 @@ from a `release:` block in `rosdistro`, so it is always a source build: 235
 messages and one service. Minutes on a desktop. The script drops to two
 compiler jobs automatically under 8 GB of RAM; add swap if it is still killed.
 
-### 3. Optional: the depth camera patch
+### 4. Optional: the depth camera patch
 
 `patches/px4-camera-res.patch` drops the simulated camera from 640x480 at
 30 Hz to 320x240 at 15 Hz. **The measurements above were taken with it
@@ -202,7 +219,7 @@ One surprise worth knowing: with `CP_DIST` set, PX4 forces Loiter if the
 obstacle stream stops for five seconds. Stopping the ROS stack mid-flight will
 change the aircraft's mode.
 
-## Path planning with Nav2 (experimental)
+## Path planning with Nav2
 
 The base stack brakes for obstacles. A second, opt-in layer plans around them:
 
@@ -371,15 +388,21 @@ avoidance_sim/      the ROS 2 package
   obstacle_distance.py  point cloud -> 72-bin polar histogram
   software_pilot.py     flies to a goal on synthetic sticks
   goal_3d.py            draggable 3D waypoint with its heading ring
-  command_marker.py     the right-click arm/land menu
+  command_marker.py     the right-click menu: brake/plan mode, arm, takeoff, land
   world_markers.py      draws the world's obstacles in RViz
   goal_bridge.py        RViz's flat Goal Pose tool -> PX4 reposition
   tf_publisher.py       PX4 odometry -> the TF tree
   rviz_bridge.py        composes the six RViz-side nodes in one process
-launch/sim.launch.py
-config/avoidance.rviz
+launch/sim.launch.py  brake mode: PX4 collision prevention on synthetic sticks
+launch/nav2.launch.py plan mode: the above plus Nav2 and pointcloud_to_laserscan
+config/avoidance.rviz the RViz layout, with the Nav2 panel and overlays
+config/nav2.yaml      costmaps, planner, controller and tree parameters
+config/avoidance_bt.xml  the recovery behaviour tree Nav2 runs
 patches/              the optional depth camera resolution change
-scripts/install.sh
+scripts/prereqs.sh    ROS 2 Jazzy, Gazebo Harmonic and the build tools
+scripts/install.sh    the agent, px4_msgs and this package
+test/                 the measurement scripts behind the numbers above
+COMMANDS.md           the one-page command reference
 ```
 
 `world_markers.py` reads the Gazebo world from `~/PX4-Autopilot/Tools/...` by
@@ -388,8 +411,4 @@ will not appear.
 
 ## License
 
-**Not yet chosen, which means all rights reserved.** Until a license is added,
-nobody can legally copy, modify or redistribute this, which is at odds with
-publishing an install script. `package.xml` and `setup.py` both carry a
-placeholder that is not a valid SPDX identifier, so ROS release tooling will
-reject it. BSD-3-Clause would match PX4 and `px4_msgs`.
+BSD-3-Clause, the same licence as PX4 and `px4_msgs`. See `LICENSE`.

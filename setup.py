@@ -29,7 +29,7 @@ setup(
         'Depth-camera obstacle avoidance for PX4 SITL in Gazebo Harmonic, '
         'flown from RViz.'
     ),
-    license='TODO: choose a license before publishing',
+    license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
             'obstacle_distance = avoidance_sim.obstacle_distance:main',
