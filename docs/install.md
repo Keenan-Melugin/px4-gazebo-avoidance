@@ -96,6 +96,15 @@ without it. Remove it:
 sed -i '/SVGA_VGPU10/d' ~/.profile
 ```
 
+The second VMware line comes at run time: start PX4 with
+`PX4_GZ_SIM_RENDER_ENGINE=ogre`. Gazebo's default renderer on VMware's virtual
+GPU produces a depth image with no finite points at all (0 of 76,800,
+measured), which the obstacle node now reports as a dead camera; the older
+`ogre` renderer gives correct depth, at about 2 Hz. That rate is the limit of
+a VM here: at full stick the aircraft covers 5 m between frames, so expect
+braking to be late or absent. Use the VM to install, fly and learn the
+stack; take the avoidance numbers from a machine with a real GPU.
+
 Now log out and back in. This is not ritual: the setup script added you to
 the `dialout` group, and group changes take effect at login. On WSL,
 `wsl --terminate Ubuntu-24.04` from PowerShell and reopen the terminal does
@@ -217,6 +226,7 @@ RViz is up with the aircraft, the walls and a green goal ball. Go to
 |---|---|
 | Windows 11, WSL2, Ubuntu 24.04 | Tested: the development machine and the clean-clone test. Needs `GALLIUM_DRIVER=d3d12` |
 | Ubuntu 24.04 on real hardware | Untested. Nothing here is WSL-specific; set no renderer variable, Mesa picks the driver itself |
+| Ubuntu 24.04 in VMware Workstation 17 on Windows | Tested for install and run, 6 cores and 8 GB: every step passes with the two VMware lines below, the aircraft flies and holds headings. Avoidance not validated: the virtual GPU renders the depth camera at 2 Hz. See below |
 | Raspberry Pi 5, Ubuntu 24.04 arm64 | Untested. See below |
 | Raspberry Pi OS | No. No ROS 2 Jazzy packages exist for Debian |
 | macOS, Apple Silicon or Intel | Untested. Through an Ubuntu 24.04 arm64 VM with GPU acceleration; see below |
@@ -284,6 +294,7 @@ Paste its output when asking for help.
 | Aircraft only flies forwards | `CP_GO_NO_DATA` is 0 |
 | Aircraft will not arm | A goal is holding the throttle up: `STOP` on the green ball first. Or PX4 is still booting |
 | `X Error of failed request: GLXBadFBConfig` as the model spawns | `SVGA_VGPU10=0` in the environment, which PX4's setup script writes to `~/.profile` on VMware. Remove it; step 2 says how |
+| `depth cloud is all NaN` in terminal 2, aircraft flies at walls | The renderer is producing no depth. On VMware, start PX4 with `PX4_GZ_SIM_RENDER_ENGINE=ogre` |
 
 The simulation degrades after an hour or two of flying, crashes and restarts:
 the aircraft drifts, ignores commands, or reports a position far from the
