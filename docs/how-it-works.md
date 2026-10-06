@@ -132,8 +132,8 @@ round it; collision prevention exists to veto motion toward obstacles. Measured 
 | -1 (off) | 1.50 m/s | 1.24 m/s | rounded the end of the wall |
 
 So the two are exclusive, and the switch is PX4's flight mode rather than a
-parameter: brake mode is Position on sticks with collision prevention live;
-plan mode is Offboard, where PX4 structurally has no collision prevention, so
+parameter. Brake mode is Position on sticks with collision prevention live.
+Plan mode is Offboard, where PX4 structurally has no collision prevention, so
 `CP_DIST` can stay at 2.0 throughout. Verified: plan mode tracked 1.00 m/s
 commanded to 1.00 m/s achieved with `CP_DIST 2.0`, the value that had
 deadlocked the stick path.
@@ -192,9 +192,9 @@ by installing on a clean machine, where the aircraft never armed:
 
 The launch sets them through PX4's own `px4-param` client once PX4 answers.
 `PX4_PARAM_<NAME>` environment variables on the PX4 command would be neater,
-and they fail for the one that matters: PX4's startup applies them before the
-airframe file, and records a value equal to the compiled default (0) as
-"still default", so the airframe's later `set-default 2` wins. Measured on a
+and they fail for the one that matters. PX4's startup applies them before the
+airframe file and records a value equal to the compiled default (0) as "still
+default", so the airframe's later `set-default 2` wins. Measured on a
 clean machine: three of four applied, `NAV_DLL_ACT` stayed 2.
 
 ## Two more traps
