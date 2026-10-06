@@ -144,6 +144,36 @@ ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}"
 `CP_DIST` does not need changing between them, because collision prevention
 does not apply in Offboard at all.
 
+## Planning a route round something
+
+```bash
+ros2 launch avoidance_sim nav2.launch.py          # instead of sim.launch.py
+```
+
+Then in RViz: right-click the orange ball, **MODE: plan**. Confirm it took:
+
+```bash
+ros2 topic echo /fmu/out/vehicle_status_v1 --once | grep nav_state   # 14
+```
+
+Set the goal with RViz's **2D Goal Pose** tool (the toolbar button, not the
+green ball). In plan mode that goes to Nav2; the green ball is for brake mode.
+The green line is the planned path, the orange points are what the camera has
+seen. Measured on the walls world: a goal 5.5 m behind a 10 m wall, reached in
+43 s round the shorter end.
+
+Two things that matter for a clean run:
+
+- **Observe from far enough back.** The camera covers 1.48 times its range in
+  width, so to see both ends of a 10 m wall the aircraft needs about 10 m of
+  standoff. Start close and it probes the wall a segment at a time.
+- **Expect `detected collision ahead!` in the log.** That is pure pursuit
+  objecting to a freshly marked wall cell under its path. The tree recovers
+  (`Running wait`, replan); only `Goal failed` is a real failure.
+
+`MODE: brake` to hand control back to the green ball. The pilot also switches
+to brake by itself if you give it a green-ball goal while in plan mode.
+
 ## Looking at what is happening
 
 ```bash

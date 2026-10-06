@@ -32,11 +32,35 @@ everything else:
                   deadlocked in front of the wall
     CP_DIST -1    achieved 1.24 m/s and rounded the end of the wall
 
-So PX4 collision prevention must be OFF while Nav2 drives. It is a
-manual-flight assist and it does not compose with an autonomous planner on
-the same axis. Keep it for the base stack, where it is the whole mechanism.
+So PX4 collision prevention and a planner cannot share an axis. Collision
+prevention is a manual-flight assist; it does not compose with an autonomous
+planner. It stays for the base stack, where it is the whole mechanism.
 
-    param set CP_DIST -1        # at the pxh> prompt, before using Nav2
+The resolution is not a parameter. The pilot has two modes, selected on
+/avoidance_sim/mode or from the RViz right-click menu:
+
+    brake   Position mode on synthetic sticks. Collision prevention live.
+    plan    Offboard, TrajectorySetpoint velocity from Nav2. PX4 holds
+            collision prevention only in its manual Position-mode flight
+            tasks, so Offboard structurally has none.
+
+CP_DIST therefore never needs changing: it simply does not apply in plan
+mode. Verified by leaving it at 2.0, the value that deadlocked the stick
+path, and watching plan mode track 1.00 m/s commanded to 1.00 m/s achieved.
+
+Three more things were measured on the way to a goal actually being reached,
+and each is a comment in config/nav2.yaml or config/avoidance_bt.xml:
+
+  * The costmap's max_obstacle_height is compared in the odom frame, so the
+    default of 2.0 discarded every observation from a flying aircraft and
+    the planner worked off marks made during moments below 2 m.
+  * Pure pursuit aborts the whole goal on "detected collision ahead!", which
+    fires when the camera marks a wall cell under a path planned a moment
+    earlier. The bundled behaviour tree recovers (clear local costmap, wait,
+    replan) instead of failing.
+  * The camera sees 73 degrees, so planning around a 10 m wall needs about
+    10 m of standoff to have observed both ends, and the global costmap must
+    not clear, or turning away forgets the wall.
 
 Nav2 is two-dimensional. It plans in the horizontal plane and knows nothing
 about altitude, which stays with the pilot.
@@ -60,6 +84,9 @@ LIFECYCLE_NODES = ['controller_server', 'planner_server',
 def generate_launch_description():
     share = get_package_share_directory('avoidance_sim')
     params = os.path.join(share, 'config', 'nav2.yaml')
+    # The tree lives in this package, so only the launch file knows its
+    # installed path. This override beats the value in nav2.yaml.
+    bt_xml = os.path.join(share, 'config', 'avoidance_bt.xml')
     sim_time = [{'use_sim_time': True}]
 
     return LaunchDescription([
@@ -122,7 +149,9 @@ def generate_launch_description():
         Node(package='nav2_behaviors', executable='behavior_server',
              name='behavior_server', parameters=[params], output='screen'),
         Node(package='nav2_bt_navigator', executable='bt_navigator',
-             name='bt_navigator', parameters=[params], output='screen'),
+             name='bt_navigator',
+             parameters=[params, {'default_nav_to_pose_bt_xml': bt_xml}],
+             output='screen'),
         Node(package='nav2_velocity_smoother', executable='velocity_smoother',
              name='velocity_smoother', parameters=[params],
              remappings=[('cmd_vel', '/cmd_vel_nav'),

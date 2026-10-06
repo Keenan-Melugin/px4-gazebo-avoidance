@@ -1,0 +1,63 @@
+<!--
+  Behaviour tree for an aircraft with a narrow forward camera.
+
+  Based on Nav2's navigate_to_pose_w_replanning_and_recovery.xml, with three
+  deliberate differences, each the result of a measured failure:
+
+  1. A controller failure is RECOVERED, not fatal. The stock replanning-only
+     tree fails the whole goal the instant the controller objects. Measured:
+     the planner was replanning every second, the camera marked new wall cells
+     as the aircraft approached, the current path momentarily crossed one,
+     pure pursuit raised "detected collision ahead!" and the goal failed, when
+     the next replan a fraction of a second later would have routed around it.
+     Here that path becomes: clear the local costmap, wait, replan, retry.
+
+  2. No Spin, no BackUp. Those are ground-robot recoveries. A flying aircraft
+     spinning or reversing blind, with a camera that sees only 73 degrees, is
+     worse than waiting. The behaviour server loads only Wait, and a tree that
+     names a behaviour it cannot find fails to load at all.
+
+  3. The GLOBAL costmap is never cleared. With this camera it is the only
+     memory of walls the aircraft is no longer looking at; clearing it on a
+     planning failure, as the stock tree does, would forget the obstacle and
+     plan straight back through it.
+
+  Replanning is 2 Hz rather than the stock 1 Hz, so the path reflects newly
+  observed walls sooner and the race above has half the window.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="2.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased" error_code_id="{compute_path_error_code}"/>
+            <!-- Planning failed: the costmap has nothing better yet. Give the
+                 camera a moment rather than erasing what it has learned. -->
+            <Wait wait_duration="1.0"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath" error_code_id="{follow_path_error_code}"/>
+          <Sequence>
+            <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          </Sequence>
+        </RecoveryNode>
+      </PipelineSequence>
+      <Sequence>
+        <Fallback>
+          <WouldAControllerRecoveryHelp error_code="{follow_path_error_code}"/>
+          <WouldAPlannerRecoveryHelp error_code="{compute_path_error_code}"/>
+        </Fallback>
+        <ReactiveFallback name="RecoveryFallback">
+          <GoalUpdated/>
+          <RoundRobin name="RecoveryActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <Wait wait_duration="2.0"/>
+          </RoundRobin>
+        </ReactiveFallback>
+      </Sequence>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

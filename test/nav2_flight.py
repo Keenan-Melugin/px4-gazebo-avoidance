@@ -22,6 +22,7 @@ from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 from geometry_msgs.msg import PoseStamped, Twist
+from std_msgs.msg import String
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Path
 from px4_msgs.msg import VehicleCommand, VehicleLocalPosition, VehicleStatus
@@ -29,6 +30,11 @@ from px4_msgs.msg import VehicleCommand, VehicleLocalPosition, VehicleStatus
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
+# Must match the pilot's subscriber. A VOLATILE publisher to a TRANSIENT_LOCAL
+# subscriber is not a QoS mismatch warning, it is silence.
+MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                      history=HistoryPolicy.KEEP_LAST, depth=1)
 
 # Standoff matters, and it is geometry rather than taste. box2 is 10 m wide
 # (east -8 to +2) and the camera sees a 73 degree arc, so at range R it covers
@@ -56,6 +62,9 @@ class N2(Node):
         self.create_subscription(Path, '/plan', self.on_plan, 10)
         self.create_subscription(Twist, '/cmd_vel', self.on_cmd, 10)
         self.ac = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.mode_pub = self.create_publisher(String, '/avoidance_sim/mode',
+                                              MODE_QOS)
+        self.nav = None
         self.pos = None
         self.yaw = 0.0
         self.armed = None
@@ -74,6 +83,12 @@ class N2(Node):
     def on_st(self, m):
         self.armed = (m.arming_state == 2)
         self.healthy = m.pre_flight_checks_pass
+        self.nav = m.nav_state
+
+    def set_mode(self, name):
+        m = String()
+        m.data = name
+        self.mode_pub.publish(m)
 
     def on_plan(self, m):
         self.plan_n += 1
@@ -89,10 +104,21 @@ class N2(Node):
         self.last_cmd = (m.linear.x, m.linear.y, m.angular.z)
 
     def speed(self):
-        if len(self.track) < 20:
+        """Ground speed over the last ~2 s of track, by wall clock.
+
+        The first version divided by an assumed 2.0 s for 20 samples; the
+        sample interval is not fixed, so it read 0.05 m/s while the aircraft
+        covered 9 m in 5 s. Timestamps now travel with the samples.
+        """
+        if len(self.track) < 2:
             return 0.0
-        a, b = self.track[-20], self.track[-1]
-        return math.hypot(b[0] - a[0], b[1] - a[1]) / 2.0
+        now = self.track[-1][2]
+        i = len(self.track) - 1
+        while i > 0 and now - self.track[i][2] < 2.0:
+            i -= 1
+        a, b = self.track[i], self.track[-1]
+        dt = b[2] - a[2]
+        return math.hypot(b[0] - a[0], b[1] - a[1]) / dt if dt > 0.2 else 0.0
 
     def goal_pilot(self, east, north, alt, hdg=None):
         g = PoseStamped()
@@ -212,6 +238,23 @@ def main():
     g.pose.pose.position.x = float(GOAL[0])
     g.pose.pose.position.y = float(GOAL[1])
     g.pose.pose.orientation.w = 1.0
+    # Positioning used brake mode on purpose: the pilot's own goal flying is
+    # the reliable way to get into place. Planning needs plan mode, which is
+    # Offboard, where PX4 has no collision prevention to veto the planner.
+    print("  switching to PLAN mode (Offboard)")
+    n.set_mode('plan')
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.nav == 14:
+            break
+    print("  nav_state %s (14 = OFFBOARD)" % n.nav)
+    if n.nav != 14:
+        print("  ABORT: plan mode did not reach Offboard, so this would measure")
+        print("         the stick path with collision prevention live, which is")
+        print("         the deadlock already recorded.")
+        n.set_mode('brake')
+        return 2
+
     print("  sending Nav2 goal: east %.1f north %.1f (wall at north %.1f)"
           % (GOAL[0], GOAL[1], WALL_NORTH))
     fut = n.ac.send_goal_async(g)
@@ -231,7 +274,7 @@ def main():
     while time.time() - t0 < 300:
         rclpy.spin_once(n, timeout_sec=0.1)
         if n.pos:
-            n.track.append((n.pos[1], n.pos[0]))
+            n.track.append((n.pos[1], n.pos[0], time.time()))
             if n.pos[0] > WALL_NORTH + 1.0:
                 crossed = True
         if int(time.time() - t0) % 6 == 0:
@@ -250,7 +293,7 @@ def main():
     print("  plans produced:      %d" % n.plan_n)
     print("  cmd_vel messages:    %d" % n.cmds)
     print("  final east %+.2f north %+.2f" % (n.pos[1], n.pos[0]))
-    east_excursion = max(abs(e - START[0]) for e, _ in n.track) if n.track else 0
+    east_excursion = max(abs(p[0] - START[0]) for p in n.track) if n.track else 0
     print("  furthest sideways excursion from the start line: %.2f m"
           % east_excursion)
     if n.plan_n == 0:
@@ -269,6 +312,10 @@ def main():
         print("  PARTIAL: Nav2 planned and drove, but never got past north")
         print("           %.1f. Either the detour is longer than the time" % WALL_NORTH)
         print("           allowed, or it is stuck against the wall.")
+    print()
+    print("  back to BRAKE mode")
+    n.set_mode('brake')
+    spin(n, 3.0)
     n.destroy_node()
     rclpy.try_shutdown()
     return 0

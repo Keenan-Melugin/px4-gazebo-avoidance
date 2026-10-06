@@ -37,10 +37,20 @@ local_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
+        # Height is checked in the ODOM frame, at the layer AND the source.
+        # The default of 2.0 silently discards every observation from an
+        # aircraft at 6 m, so the costmap only ever learned the world during
+        # moments below 2 m. Measured: 135 scan beams on a wall at 9.9 m and
+        # a lethal count that did not move for 18 s. The slab that actually
+        # selects relevant heights is pointcloud_to_laserscan's, relative to
+        # base_link, so these just have to be out of the way.
+        min_obstacle_height: -10.0
+        max_obstacle_height: 100.0
         observation_sources: scan
         scan:
           topic: /scan
-          max_obstacle_height: 2.0
+          min_obstacle_height: -10.0
+          max_obstacle_height: 100.0
           clearing: True
           marking: True
           data_type: "LaserScan"
@@ -80,10 +90,20 @@ global_costmap:
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
+        # Height is checked in the ODOM frame, at the layer AND the source.
+        # The default of 2.0 silently discards every observation from an
+        # aircraft at 6 m, so the costmap only ever learned the world during
+        # moments below 2 m. Measured: 135 scan beams on a wall at 9.9 m and
+        # a lethal count that did not move for 18 s. The slab that actually
+        # selects relevant heights is pointcloud_to_laserscan's, relative to
+        # base_link, so these just have to be out of the way.
+        min_obstacle_height: -10.0
+        max_obstacle_height: 100.0
         observation_sources: scan
         scan:
           topic: /scan
-          max_obstacle_height: 2.0
+          min_obstacle_height: -10.0
+          max_obstacle_height: 100.0
           # clearing FALSE here, unlike the local costmap, and this is the
           # difference between planning around a wall and planning through it.
           # The camera sees a 73 degree arc. With clearing on, every cell the
@@ -109,7 +129,11 @@ global_costmap:
 planner_server:
   ros__parameters:
     use_sim_time: True
-    expected_planner_frequency: 1.0
+    # 2 Hz, not 1. The camera marks new wall cells as the aircraft
+    # approaches, and the controller aborts if the current path crosses
+    # one before the next replan moves it. Replanning faster halves
+    # that window.
+    expected_planner_frequency: 2.0
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
@@ -179,7 +203,10 @@ controller_server:
       # Collision checking ahead on the path, so it still refuses to drive
       # into something even though it is not optimising over obstacles.
       use_collision_detection: true
-      max_allowed_time_to_collision_up_to_carrot: 1.5
+      # 1.0 s, not 1.5. This is how far ahead along the path pure pursuit
+      # checks for a collision before refusing to continue. Longer means
+      # more refusals on cells the planner has not yet routed around.
+      max_allowed_time_to_collision_up_to_carrot: 1.0
 
 bt_navigator:
   ros__parameters:
@@ -196,6 +223,9 @@ bt_navigator:
     # stops there, taking bt_navigator and velocity_smoother with it.
     # This tree replans on a timer and calls no recoveries.
     #
+    # nav2.launch.py OVERRIDES this with the bundled config/avoidance_bt.xml,
+    # whose installed path only the launch file knows. This value is the
+    # fallback for anyone running bt_navigator with just this file.
     # It must be set HERE, at the top level. Jazzy also declares
     # navigate_to_pose.default_nav_to_pose_bt_xml, and setting only that one
     # is silently ignored: the plugin-scoped value is accepted and the

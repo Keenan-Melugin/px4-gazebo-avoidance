@@ -23,6 +23,15 @@ PX4_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                      durability=DurabilityPolicy.VOLATILE,
                      history=HistoryPolicy.KEEP_LAST, depth=5)
 
+# The brake/plan mode is state, not an event. TRANSIENT_LOCAL means the last
+# value is retained and handed to any subscriber that joins late, so a mode
+# switch cannot be lost to discovery timing the way a one-shot VOLATILE
+# message can. Publishers and subscribers must BOTH use this: a VOLATILE
+# publisher does not match a TRANSIENT_LOCAL subscriber at all.
+MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                      history=HistoryPolicy.KEEP_LAST, depth=1)
+
 # NED -> ENU is a 180 degree turn about (1,1,0)/sqrt(2): x<->y, z flips.
 R_NED_ENU = Rotation.from_quat([1 / math.sqrt(2), 1 / math.sqrt(2), 0.0, 0.0])
 # body FRD -> body FLU is 180 degrees about x.

@@ -16,7 +16,8 @@ setup(
         (os.path.join('share', package_name, 'launch'),
          glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'),
-         glob('config/*.rviz') + glob('config/*.yaml')),
+         glob('config/*.rviz') + glob('config/*.yaml')
+         + glob('config/*.xml')),
         (os.path.join('share', package_name, 'patches'),
          glob('patches/*.patch')),
     ],

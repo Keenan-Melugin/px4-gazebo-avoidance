@@ -23,6 +23,7 @@ AMD RX 7800 XT, 12 cores. Where a number is a single run, it says so.
 | Path straightness while turning | 0.32 m lateral drift on one 10 m leg while rotating 90 degrees |
 | Simulation speed | Real-time factor **1.00** headless (five samples, 0.9987 to 1.0004), **0.55 to 0.89** with the Gazebo GUI open |
 | Software rendering, for contrast | Real-time factor **0.033** |
+| Nav2 route around a 10 m wall, plan mode | Goal reached in **43 s**, 6.2 m detour; earlier run 70 s, 11.2 m. Two runs |
 
 It brakes rather than holding a set distance: the standoff spread 0.6 m
 across three runs at the same `CP_DIST`, which is 31% of the setpoint, so
@@ -209,10 +210,37 @@ The base stack brakes for obstacles. A second, opt-in layer plans around them:
 ros2 launch avoidance_sim nav2.launch.py
 ```
 
-**Status: incomplete.** It plans, it drives the aircraft, and it does route
-around a wall rather than at it. It does not yet reliably reach a goal on the
-far side, so treat it as a working integration rather than a working
-capability.
+**Status: reaches goals.** Measured twice on the walls world, both from
+13.5 m south of a 10 m wall to a goal 5.5 m north of it:
+
+| Run | Result | Time from acceptance | Detour |
+|---|---|---|---|
+| Recovery tree, costmap still height-filtered | goal reached, (−2.25, 9.67) | ~70 s | 11.2 m, west end |
+| Recovery tree, costmap fixed | goal reached, (−1.51, 10.06) | **43 s** | **6.2 m, east end** |
+
+The second run chose the shorter way round because it could see both ends of
+the wall from the start. Two runs on one obstacle layout is evidence, not a
+guarantee; the limits below still apply.
+
+Four things had to be fixed for that, and every one was a measurement rather
+than a guess. They are written up in `config/nav2.yaml`,
+`config/avoidance_bt.xml` and the `nav2.launch.py` docstring:
+
+- **The costmap could not see at altitude.** `max_obstacle_height` is
+  compared in the `odom` frame, so Nav2's default of 2.0 m discarded every
+  observation from an aircraft at 6 m. Measured: 135 scan beams on a wall at
+  9.9 m, lethal count frozen for 18 s. Every earlier run was planning against
+  marks made during moments below 2 m.
+- **Pure pursuit aborts the goal on `detected collision ahead!`**, which fires
+  when the camera marks a wall cell under a path planned a moment earlier. The
+  bundled behaviour tree clears the local costmap, waits, and replans instead
+  of failing, and never clears the global costmap, which is the only memory of
+  walls the camera is not facing.
+- **Plan mode must stream zero sticks.** Stopping them made PX4 declare RC
+  loss in 0.5 s, before the 1.2 s Offboard warm-up finished.
+- **Mode switches are retained** (`TRANSIENT_LOCAL`), a stick goal in plan
+  mode switches back to brake rather than being silently ignored, and brake
+  mode keeps asking for Position mode until it gets it.
 
 **One finding from it is solid and matters more than the feature.** PX4
 collision prevention and a path planner cannot both own the same axis. A

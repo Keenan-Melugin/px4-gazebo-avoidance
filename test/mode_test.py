@@ -30,6 +30,11 @@ from px4_msgs.msg import VehicleCommand, VehicleLocalPosition, VehicleStatus
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
+# Must match the pilot's subscriber. A VOLATILE publisher to a TRANSIENT_LOCAL
+# subscriber is not a QoS mismatch warning, it is silence.
+MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                      history=HistoryPolicy.KEEP_LAST, depth=1)
 
 POSCTL, OFFBOARD = 2, 14
 
@@ -42,7 +47,8 @@ def param(name, value):
 class M(Node):
     def __init__(self):
         super().__init__('mode_test')
-        self.mode = self.create_publisher(String, '/avoidance_sim/mode', 10)
+        self.mode = self.create_publisher(String, '/avoidance_sim/mode',
+                                          MODE_QOS)
         self.cmd_vel = self.create_publisher(Twist, '/cmd_vel', 10)
         self.pilot = self.create_publisher(PoseStamped,
                                            '/avoidance_sim/pilot_goal', 10)

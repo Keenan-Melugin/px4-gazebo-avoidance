@@ -18,7 +18,7 @@ from px4_msgs.msg import (ManualControlSetpoint,
     VehicleLocalPosition,
     VehicleStatus)
 
-from .frames import PX4_QOS, YAW_SUFFIX, wrap, yaw_of
+from .frames import MODE_QOS, PX4_QOS, YAW_SUFFIX, wrap, yaw_of
 
 
 class SoftwarePilot(Node):
@@ -168,13 +168,14 @@ class SoftwarePilot(Node):
         self.goal = None         # (north, east, alt)
         self.goal_yaw = None     # NED heading, radians. None = do not turn.
         self.mode = self.MODE_BRAKE
+        self._last_posctl_req = 0.0
         self.offboard_since = None
         self.offboard_pub = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', PX4_QOS)
         self.traj_pub = self.create_publisher(
             TrajectorySetpoint, '/fmu/in/trajectory_setpoint', PX4_QOS)
         self.create_subscription(String, '/avoidance_sim/mode',
-                                 self.on_mode, 10)
+                                 self.on_mode, MODE_QOS)
         self.cmd_vel = None      # (vx, vy, wz) in base_link FLU
         self.cmd_vel_t = 0.0
         self.hold_alt = None     # altitude to keep while Nav2 drives XY
@@ -222,6 +223,14 @@ class SoftwarePilot(Node):
 
     def on_goal(self, msg: PoseStamped):
         """Goal arrives in ENU (RViz): x east, y north, z up."""
+        if self.mode == self.MODE_PLAN:
+            # A stick goal has only one meaning: fly it on sticks. Accepting
+            # it in plan mode and then ignoring it left PX4 armed in Offboard
+            # on the ground with nothing driving, and no message saying why.
+            self.get_logger().info(
+                'pilot goal received in PLAN mode: switching to BRAKE, '
+                'because a pilot goal means fly it on sticks')
+            self.on_mode(String(data=self.MODE_BRAKE))
         if msg.header.frame_id == "STOP":
             self.stop()
             return
@@ -306,6 +315,27 @@ class SoftwarePilot(Node):
         oc.attitude = False
         oc.body_rate = False
         self.offboard_pub.publish(oc)
+
+        # Keep the stick stream alive. This is not optional.
+        #
+        # The first version stopped publishing ManualControlSetpoint the
+        # moment plan mode started. PX4 treats that stream as the RC link
+        # (COM_RC_IN_MODE 1, joystick only), and COM_RC_LOSS_T is 0.5 s, so it
+        # declared RC loss BEFORE the 1.2 s Offboard warm-up had finished and
+        # fired the RC-loss failsafe, NAV_RCL_ACT. That is where the unexplained
+        # heading swings in plan mode came from: the aircraft was obeying a
+        # failsafe, not the planner.
+        #
+        # Zero sticks are harmless in Offboard. The flight task ignores them
+        # for control, and COM_RC_OVERRIDE only ejects from Offboard on stick
+        # MOVEMENT, which a constant zero is not.
+        m = ManualControlSetpoint()
+        m.timestamp = self.get_clock().now().nanoseconds // 1000
+        m.timestamp_sample = m.timestamp
+        m.valid = True
+        m.data_source = ManualControlSetpoint.SOURCE_MAVLINK_0
+        m.roll = m.pitch = m.yaw = m.throttle = 0.0
+        self.pub.publish(m)
 
         fresh = (self.cmd_vel is not None
                  and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
@@ -545,6 +575,16 @@ class SoftwarePilot(Node):
                 self.active = False
 
         self.pub.publish(m)
+
+        # Keep asking for Position mode until PX4 is in it. One request on
+        # the mode switch was not enough: if PX4 was still in Offboard and
+        # declined, brake mode sat there streaming sticks that Offboard
+        # ignores, forever. Plan mode already re-asks for Offboard the same way.
+        if self.nav is not None and self.nav != 2:
+            now = self.now_s()
+            if now - self._last_posctl_req > 2.0:
+                self._last_posctl_req = now
+                self.request_posctl()
 
     def report(self):
         if self.mode == self.MODE_PLAN:

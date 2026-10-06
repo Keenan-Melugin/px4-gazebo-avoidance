@@ -15,7 +15,7 @@ from visualization_msgs.msg import (InteractiveMarker,
     InteractiveMarkerControl,
     Marker)
 
-from .frames import PX4_QOS
+from .frames import MODE_QOS, PX4_QOS
 
 
 class CommandMarker(Node):
@@ -52,7 +52,8 @@ class CommandMarker(Node):
         # prevention vetoes a planner, so the two are exclusive. Switching
         # mode switches PX4's flight mode, which is what decides whether
         # collision prevention applies at all.
-        self.mode_pub = self.create_publisher(String, '/avoidance_sim/mode', 10)
+        self.mode_pub = self.create_publisher(String, '/avoidance_sim/mode',
+                                              MODE_QOS)
         self.menu.insert('MODE: brake (PX4 avoids, no planning)',
                          callback=lambda fb: self.set_mode('brake'))
         self.menu.insert('MODE: plan (Nav2 avoids, no PX4 braking)',
