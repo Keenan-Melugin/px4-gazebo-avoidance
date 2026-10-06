@@ -11,8 +11,11 @@ script left the stack in. The plan-mode half is nav2_flight.py; gate.py runs
 both and keeps score.
 
 Picks the wall by position rather than assuming one, which is the mistake the
-first version of this test made. The exit code is the number of failures.
+first version of this test made, and reads the walls from the world file
+(--world, default walls) rather than carrying their coordinates. The exit
+code is the number of failures.
 """
+import argparse
 import math
 import time
 
@@ -24,6 +27,8 @@ from geometry_msgs.msg import PoseStamped
 from px4_msgs.msg import VehicleLocalPosition, VehicleStatus, VehicleCommand
 from std_msgs.msg import String
 
+from avoidance_sim import world_geometry
+
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
@@ -33,8 +38,8 @@ MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                       durability=DurabilityPolicy.TRANSIENT_LOCAL,
                       history=HistoryPolicy.KEEP_LAST, depth=1)
 
-# walls.sdf, as the bridge parses it. East extent of each north-south wall.
-WALL_FACES_EAST = (4.5, 11.5)
+# The wall ahead comes from the world file (--world), through the same parser
+# RViz's wall markers use, so the test and the picture always agree.
 CP_DIST = 2.0
 NAV_POSCTL = 2
 
@@ -99,6 +104,14 @@ def spin(n, s):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--world', default='walls',
+                    help='world name (as PX4_GZ_WORLD) or path to its .sdf')
+    a = ap.parse_args()
+    world = world_geometry.resolve_world(a.world)
+    boxes = world_geometry.load_boxes(world)
+    print("  world %s: %d boxes" % (world_geometry.world_name(world), len(boxes)))
+
     rclpy.init()
     n = R()
     # Up to 20 s for the first position. A fixed 4 s was enough on the
@@ -147,6 +160,46 @@ def main():
             if n.pos[2] > 6.0:
                 break
         print("  climbed to %.2f m" % n.pos[2])
+    else:
+        # Already airborne, left there by a previous run: hold position for
+        # a few seconds before asking for headings. A heading command sent
+        # in the same second the pilot came up once settled 108 degrees
+        # off; every later one was within 6.
+        n.send(n.pos[1], n.pos[0], 7.0)
+        spin(n, 8.0)
+
+    # TEST 2 flies east from this line and measures a brake, so the wall
+    # ahead has to be wide on both sides of the line. Near a wall's end,
+    # collision prevention does something else that is also correct:
+    # CP_GUIDE_ANG (30 deg) steers the setpoint toward free space, and the
+    # aircraft slides round the end instead of stopping. Measured: started
+    # 0.5 m inside box1's north end, it went round it, then round box4's,
+    # and reached east 100 with no wall left to brake at. The plan-mode
+    # half parks the aircraft at that end (north 10), so first move well
+    # inside the span of the wall ahead: 4 m clear of either end.
+    east, north = n.pos[1], n.pos[0]
+    ahead = world_geometry.faces_ahead(boxes, east, north, 7.0, 'east', margin=0.5)
+    b = ahead[0][1] if ahead else None
+    if b is None:
+        spans = [x for x in boxes
+                 if not x.rotated and x.x_min > east and x.sy >= 2.5
+                 and x.z_min <= 7.0 <= x.z_max]
+        if spans:
+            b = min(spans, key=lambda x: abs(
+                min(max(north, x.y_min + 1.0), x.y_max - 1.0) - north))
+    if b is not None:
+        lo, hi = b.y_min + 4.0, b.y_max - 4.0
+        target = (b.y_min + b.y_max) / 2.0 if lo > hi else min(max(north, lo), hi)
+        if abs(target - north) > 0.3:
+            print("  moving from north %+.2f to %+.2f, well inside %s's span "
+                  "(north %+.1f..%+.1f)" % (north, target, b.name, b.y_min, b.y_max))
+            n.send(east, target, 7.0)
+            for _ in range(40):
+                spin(n, 1.0)
+                if abs(n.pos[0] - target) < 0.6:
+                    break
+            spin(n, 3.0)
+            print("  now north %+.2f east %+.2f" % (n.pos[0], n.pos[1]))
 
     print()
     print("  TEST 1: heading. Commanding 4 headings on the spot.")
@@ -178,23 +231,39 @@ def main():
         if abs(math.degrees(wrap(math.radians(90.0) - n.yaw))) < 10.0:
             break
     print("    facing %+.0f deg" % math.degrees(n.yaw))
-    n.send(100.0, north, 7.0, 90.0)
-    for i in range(16):
-        spin(n, 3.0)
-    east_f = n.pos[1]
-    ahead = [f for f in WALL_FACES_EAST if f > east_f]
-    print("    settled at east %+.2f" % east_f)
-    if not ahead:
-        print("    no wall ahead, cannot judge            FAIL")
+    # Is there a wall on this line at all? Checked before flying, so a start
+    # off the end of every wall fails in a second instead of after 48 s of
+    # flying east into nothing. The half-metre margin covers an aircraft
+    # parked right at a wall's end, which the plan-mode half leaves it at.
+    pre = world_geometry.faces_ahead(boxes, n.pos[1], n.pos[0], n.pos[2], 'east',
+                                     margin=0.5)
+    if not pre:
+        print("    no wall east of north %+.2f at %.1f m in this world, not flying"
+              "  FAIL" % (n.pos[0], n.pos[2]))
+        print("    (move the aircraft onto a line with a wall ahead and rerun)")
         fails += 1
     else:
-        face = min(ahead)
-        gap = face - east_f
-        ok = abs(gap - CP_DIST) < 0.7
-        print("    nearest wall ahead at east %+.1f, gap %.2f m vs CP_DIST %.1f  %s"
-              % (face, gap, CP_DIST, "ok" if ok else "FAIL"))
-        if not ok:
+        print("    wall ahead: %s, face at east %+.1f" % (pre[0][1].name, pre[0][0]))
+        n.send(100.0, north, 7.0, 90.0)
+        for i in range(16):
+            spin(n, 3.0)
+        east_f, north_f, alt_f = n.pos[1], n.pos[0], n.pos[2]
+        ahead = world_geometry.faces_ahead(boxes, east_f, north_f, alt_f, 'east',
+                                           margin=0.5)
+        print("    settled at east %+.2f north %+.2f" % (east_f, north_f))
+        if not ahead:
+            print("    went round the end of the wall (CP_GUIDE_ANG steers toward "
+                  "free space), cannot judge a standoff   FAIL")
             fails += 1
+        else:
+            face, box = ahead[0]
+            gap = face - east_f
+            ok = abs(gap - CP_DIST) < 0.7
+            print("    nearest wall ahead: %s, face at east %+.1f, gap %.2f m vs "
+                  "CP_DIST %.1f  %s" % (box.name, face, gap, CP_DIST,
+                                          "ok" if ok else "FAIL"))
+            if not ok:
+                fails += 1
 
     # Park where it stopped. The east-100 goal would otherwise stay active
     # after this script exits, and on a slow machine an IMU stall that blanks

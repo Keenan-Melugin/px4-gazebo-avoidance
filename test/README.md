@@ -1,8 +1,8 @@
 # Measurement scripts
 
 These are the scripts that produced the numbers in the repository README. They
-are not unit tests: each one needs PX4, Gazebo and the stack running, and each
-flies the aircraft.
+are not unit tests: each one but `histogram_selftest.py` needs PX4, Gazebo and
+the stack running, and flies the aircraft.
 
 ## The gate
 
@@ -33,12 +33,18 @@ it was not meant to. Each half also runs on its own.
 | `mode_test.py` | The brake/plan toggle in both directions, and that plan mode is not subject to collision prevention |
 | `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding a direction and reading back the velocity PX4 reports. The lateral axis is still unverified, because pure pursuit never commands it |
 | `twist_check.py` | That `/odom` carries its twist in base_link FLU, as nav_msgs requires, rather than in the world frame |
+| `histogram_selftest.py` | The obstacle node against made-up clouds and scans, bin by bin: the single camera as measured, two sensors merged, stale and dead sensors, a yawed sensor. The only script here that needs no simulator; two seconds |
 
 Run them with the stack up and the workspace sourced, for example:
 
 ```bash
 python3 test/avoid_test.py
 ```
+
+Every script that looks for a wall takes `--world NAME` (default `walls`) and
+reads the wall positions from that world's file, through the same parser
+RViz's markers use; `gate.py` passes it to both halves. `nav2_flight.py` also
+takes `--start E N`, `--goal E N` and `--alt`.
 
 Two things to know before trusting a result:
 

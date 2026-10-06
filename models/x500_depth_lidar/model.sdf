@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  x500_depth_lidar: PX4's x500_depth (the x500 quadrotor with the OakD-Lite
+  depth camera) plus a 360 degree 2D lidar on its own link. The template for
+  a model with one more sensor.
+
+  The camera part is copied line for line from PX4's x500_depth/model.sdf,
+  so everything measured against that model still holds. The lidar part is
+  deliberately NOT PX4's lidar_2d_v2 model: PX4's own Gazebo bridge
+  subscribes to a lidar at the fixed scoped name
+  .../link/link/sensor/lidar_2d_v2/scan and publishes obstacle_distance
+  from it itself (PX4 v1.17.0, GZBridge.cpp, subscribeLaserScan), which
+  would make two publishers of the one topic PX4's collision prevention
+  reads. A sensor named `lidar` on `lidar_link` with its own <topic> is not
+  that name, so this package's obstacle node stays the only publisher and
+  merges the two sensors before PX4 sees either.
+
+  Topics: Gazebo publishes gz.msgs.LaserScan on /lidar and
+  gz.msgs.PointCloudPacked on /lidar/points (gz-sensors 8, GpuLidarSensor).
+  The launch bridges /lidar as sensor_msgs/LaserScan when lidar:=true.
+
+  Pose: -0.10 m behind, 0.30 m above base_link, which is above the camera
+  housing (top at about 0.26 m) and well above the rotors (0.06 m), so the
+  scan plane meets neither. Range starts at 0.3 m, which excludes the arms.
+
+  Start PX4 on it with the stock x500_depth airframe parameters:
+    cd ~/PX4-Autopilot/build/px4_sitl_default/rootfs
+    PX4_SYS_AUTOSTART=4002 PX4_SIM_MODEL=gz_x500_depth_lidar PX4_GZ_WORLD=walls HEADLESS=1 ../bin/px4
+  (make px4_sitl gz_<name> only exists for models with an airframe file in
+  PX4's tree; docs/extend.md says why this form is used instead.)
+-->
+<sdf version='1.9'>
+  <model name='x500_depth_lidar'>
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+    <include merge='true'>
+      <uri>model://OakD-Lite</uri>
+      <pose>.12 .03 .242 0 0 0</pose>
+    </include>
+    <joint name="CameraJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose relative_to="base_link">.12 .03 .242 0 0 0</pose>
+    </joint>
+
+    <link name="lidar_link">
+      <pose relative_to="base_link">-0.10 0 0.30 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>1e-5</ixx><iyy>1e-5</iyy><izz>1e-5</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.03</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.2 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+      <sensor name="lidar" type="gpu_lidar">
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <topic>lidar</topic>
+        <update_rate>10</update_rate>
+        <always_on>1</always_on>
+        <visualize>false</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.3</min>
+            <max>30</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </lidar>
+      </sensor>
+    </link>
+    <joint name="LidarJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>lidar_link</child>
+    </joint>
+  </model>
+</sdf>

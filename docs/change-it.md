@@ -9,15 +9,16 @@ rather than something else.
 ```
 avoidance_sim/
   frames.py             frame conventions, the two shared QoS profiles, quaternion helpers
-  obstacle_distance.py  point cloud -> 72-bin histogram. Camera geometry as parameters
+  obstacle_distance.py  point clouds and laser scans -> one 72-bin histogram. Sensors as parameters
   software_pilot.py     the pilot: gains, dead bands, the two modes
   goal_3d.py            the green ball: arrows, ring, right-click menu
   command_marker.py     the orange ball: arm, take off, land, disarm, mode
   world_markers.py      wall outlines, read from the Gazebo world file
+  world_geometry.py     the world file's boxes, shared by the markers and the measurement scripts
   goal_bridge.py        RViz's flat 2D Goal Pose -> PX4 reposition (brake mode only)
   tf_publisher.py       PX4 odometry -> TF and /odom at 30 Hz
   rviz_bridge.py        the process that hosts the six nodes above, and its executor
-launch/sim.launch.py    the base stack. Arguments: rviz, agent, agent_cmd, world_sdf, px4_bin, px4_params
+launch/sim.launch.py    the base stack. Arguments: rviz, agent, agent_cmd, world, world_sdf, lidar, px4_bin, px4_params
 launch/nav2.launch.py   the base stack plus Nav2 and pointcloud_to_laserscan
 config/nav2.yaml        costmaps, planner, controller, tree. Every non-default is commented with its measurement
 config/avoidance_bt.xml the behaviour tree Nav2 runs
@@ -25,9 +26,12 @@ config/avoidance.rviz   the RViz layout
 scripts/px4_params.sh   the PX4 parameters the launch sets
 scripts/report.sh       what this machine is and what state the stack is in, for problem reports
 scripts/prereqs.sh      ROS 2, Gazebo and build tools
-scripts/install.sh      agent, px4_msgs, this package, Nav2
+scripts/install.sh      agent, px4_msgs, this package, Nav2, and the link step below
+scripts/link_assets.sh  symlinks worlds/ and models/ into PX4's Gazebo tree, where PX4 insists they live
 patches/                the depth camera resolution change
-test/                   the measurement scripts and the gate
+worlds/                 extra worlds: pillars, and the template for the next one
+models/                 extra aircraft: x500_depth_lidar, the stock aircraft plus a 2D lidar
+test/                   the measurement scripts, the gate, and histogram_selftest.py (no simulator needed)
 ```
 
 ## The build loop
@@ -45,7 +49,8 @@ not pick up new code.
 ## The gate
 
 ```bash
-python3 test/gate.py        # about 6 minutes, needs nav2.launch.py running
+python3 test/gate.py                  # about 6 minutes, needs nav2.launch.py running
+python3 test/gate.py --world pillars  # the same, in the second world
 ```
 
 Run it after any change to the pilot, the frames, the obstacle node or the
@@ -59,7 +64,11 @@ Two conditions for a result that means anything. Nobody else may be driving
 the aircraft; a goal clicked in RViz during a run fights the test for the same
 topic. And the start position matters: the gate assumes the aircraft is
 somewhere sensible near the origin, facing nothing. `test/README.md` lists the
-other nine scripts, each measuring one thing.
+other ten scripts, each measuring one thing.
+
+After a change to the obstacle node, before the gate:
+`python3 test/histogram_selftest.py`. It needs no simulator, takes two seconds,
+and names the bin that went wrong rather than the wall the aircraft hit.
 
 ## Recipes
 
@@ -90,11 +99,10 @@ behaviour tree, the launch passes its installed path to `bt_navigator`; a tree
 that names a behaviour the behaviour server does not load fails to load at
 all, and the stack then has no navigator.
 
-**Use another world.** Pass `world_sdf:=/path/to/world.sdf` so the wall
-outlines in RViz match, and set `PX4_GZ_WORLD` to the world's name in the PX4
-command. The regression script knows the `walls` world's geometry
-(`WALL_FACES_EAST`); a different world needs its own numbers or the standoff
-test will report `no wall ahead`.
+**Use another world.** `PX4_GZ_WORLD=name` for PX4, `world:=name` on the
+launch and `--world name` for the tests. The wall positions come from the
+world file in all three places, through `world_geometry.py`, so nothing is
+typed twice. Making a world is in [extend.md](extend.md).
 
 **Add a node to the bridge.** Write it as a plain `rclpy` node, add the class
 to `NODE_TYPES` in `rviz_bridge.py`, and use `PX4_QOS` from `frames.py` for
@@ -110,9 +118,11 @@ differ in which PX4 flight mode they request and what they stream; a third
 mode would follow the same shape. Add a menu entry in `command_marker.py` and
 teach `goal_bridge.py` whether to act on `/goal_pose` in it.
 
-**Replace the sensor.** The obstacle node is the only consumer of the cloud
-and the only producer of the histogram. A different sensor means a different
-subscriber and the same output, with the three bin states respected: a range,
+**Add or replace a sensor.** The obstacle node takes a list of sensors
+(`sources`), point clouds or laser scans, and merges them before PX4 sees
+any of them, because PX4 cannot merge two histogram publishers. The schema,
+the bundled lidar model and the reasons are in [extend.md](extend.md). The
+three bin states are the contract whatever the sensor: a range,
 `max_distance + 1` for observed-and-clear, `UINT16_MAX` for unobserved.
 Getting the last two the wrong way round makes PX4 refuse to move, or move
 into things.

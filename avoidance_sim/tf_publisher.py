@@ -30,7 +30,7 @@ from px4_msgs.msg import VehicleOdometry
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from visualization_msgs.msg import Marker
 
-from .frames import CAM_XYZ, PX4_QOS, ned_to_enu, rotate_inv
+from .frames import CAM_XYZ, LIDAR_XYZ, PX4_QOS, ned_to_enu, rotate_inv
 
 
 def _finite3(a):
@@ -56,17 +56,24 @@ class TfPublisher(Node):
         self.vel_frame_seen = None
 
     def publish_static(self):
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'base_link'
-        t.child_frame_id = 'camera_link'
-        t.transform.translation.x = CAM_XYZ[0]
-        t.transform.translation.y = CAM_XYZ[1]
-        t.transform.translation.z = CAM_XYZ[2]
-        t.transform.rotation.w = 1.0
-        self.static.sendTransform(t)
+        # Both sensor frames, whether or not the lidar model is flying: an
+        # unused frame costs nothing, a missing one leaves RViz unable to
+        # place the scan.
+        frames = []
+        for child, xyz in (('camera_link', CAM_XYZ), ('lidar_link', LIDAR_XYZ)):
+            t = TransformStamped()
+            t.header.stamp = self.get_clock().now().to_msg()
+            t.header.frame_id = 'base_link'
+            t.child_frame_id = child
+            t.transform.translation.x = xyz[0]
+            t.transform.translation.y = xyz[1]
+            t.transform.translation.z = xyz[2]
+            t.transform.rotation.w = 1.0
+            frames.append(t)
+        self.static.sendTransform(frames)
         self.get_logger().info(
-            f'static base_link -> camera_link at {CAM_XYZ} (no rotation)')
+            f'static base_link -> camera_link at {CAM_XYZ}, '
+            f'lidar_link at {LIDAR_XYZ} (no rotation)')
 
     def publish_odom(self, now, x, y, z, q, q_body_ned, m):
         """nav_msgs/Odometry for Nav2. q is (w, x, y, z), ENU/FLU.

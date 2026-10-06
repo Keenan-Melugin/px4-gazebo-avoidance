@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does Nav2 route the aircraft AROUND a wall, rather than stopping at it?
 
-The scenario is box2 in walls.sdf: a wall running east-west at north +4.5 to
+The default scenario is box2 in walls.sdf: a wall running east-west at north +4.5 to
 +5.5, spanning east -8 to +2. Starting south of it and asking for a goal north
 of it means the only way through is around its east end at east +2.
 
@@ -13,6 +13,7 @@ Uses the /navigate_to_pose action directly rather than /goal_pose, because
 PX4 reposition with no avoidance. Two different things would react to one
 message.
 """
+import argparse
 import math
 import time
 
@@ -26,6 +27,8 @@ from std_msgs.msg import String
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import Path
 from px4_msgs.msg import VehicleCommand, VehicleLocalPosition, VehicleStatus
+
+from avoidance_sim import world_geometry
 
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
@@ -41,10 +44,12 @@ MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
 # 2*R*tan(36.5) = 1.48*R of width. To see a 10 m obstacle AND both of its ends
 # the aircraft has to observe from about 10 m back; from 3.5 m it sees 5 m of
 # wall and no ends, so the planner can never find a way round.
-START = (-2.0, -9.0)     # east, north: 13.5 m south of box2's face
-GOAL = (-2.0, 10.0)      # east, north: north of box2
-WALL_NORTH = 4.5         # box2's south face
-ALT = 8.0
+START = (-2.0, -9.0)     # east, north: 13.5 m south of box2's face. --start
+GOAL = (-2.0, 10.0)      # east, north: north of box2. --goal
+ALT = 8.0                # --alt
+# The wall itself comes from the world file (--world): the first box north of
+# the start on the start's east line, through the same parser RViz's wall
+# markers use. For walls that is box2's south face at north +4.5.
 
 
 class N2(Node):
@@ -155,6 +160,33 @@ def spin(n, s):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--world', default='walls',
+                    help='world name (as PX4_GZ_WORLD) or path to its .sdf')
+    ap.add_argument('--start', nargs=2, type=float, metavar=('EAST', 'NORTH'),
+                    default=START, help='where to position first')
+    ap.add_argument('--goal', nargs=2, type=float, metavar=('EAST', 'NORTH'),
+                    default=GOAL, help='the Nav2 goal, beyond the wall')
+    ap.add_argument('--alt', type=float, default=ALT)
+    a = ap.parse_args()
+    start, goal, alt = tuple(a.start), tuple(a.goal), a.alt
+    world = world_geometry.resolve_world(a.world)
+    boxes = world_geometry.load_boxes(world)
+    hit = world_geometry.first_face_ahead(boxes, start[0], start[1], alt, 'north')
+    if hit is None:
+        print("  no box north of east %+.1f north %+.1f at %.1f m in %s: nothing"
+              " to route around. Pick a start with a wall ahead of it."
+              % (start[0], start[1], alt, a.world))
+        return 2
+    wall_north, wall = hit
+    print("  world %s: %s, near face at north %+.1f, spanning east %+.1f..%+.1f,"
+          " %.1f m thick" % (world_geometry.world_name(world), wall.name,
+                              wall_north, wall.x_min, wall.x_max, wall.sy))
+    if goal[1] <= wall.y_max:
+        print("  the goal (north %+.1f) is not beyond the wall's far face (north"
+              " %+.1f)" % (goal[1], wall.y_max))
+        return 2
+
     rclpy.init()
     n = N2()
     # Up to 20 s for the first position. A fixed 4 s was enough on the
@@ -196,12 +228,12 @@ def main():
         print("  could not arm"); return 1
 
     print("  positioning at east %.1f north %.1f alt %.1f, facing north"
-          % (START[0], START[1], ALT))
-    n.goal_pilot(START[0], START[1], ALT, 0.0)
+          % (start[0], start[1], alt))
+    n.goal_pilot(start[0], start[1], alt, 0.0)
     for _ in range(75):
         spin(n, 1.0)
-        if (abs(n.pos[1] - START[0]) < 1.2 and abs(n.pos[0] - START[1]) < 1.2
-                and n.pos[2] > ALT - 1.5):
+        if (abs(n.pos[1] - start[0]) < 1.2 and abs(n.pos[0] - start[1]) < 1.2
+                and n.pos[2] > alt - 1.5):
             break
     print("  at east %+.2f north %+.2f alt %.2f heading %+.0f"
           % (n.pos[1], n.pos[0], n.pos[2], math.degrees(n.yaw)))
@@ -210,16 +242,16 @@ def main():
     # and carried on, and then claimed PASS because the aircraft was already
     # 29 m past the wall before the goal was even sent.
     bad = []
-    if abs(n.pos[1] - START[0]) > 2.0:
-        bad.append("east %+.2f, wanted %+.1f" % (n.pos[1], START[0]))
-    if abs(n.pos[0] - START[1]) > 2.0:
-        bad.append("north %+.2f, wanted %+.1f" % (n.pos[0], START[1]))
-    if n.pos[0] > WALL_NORTH:
+    if abs(n.pos[1] - start[0]) > 2.0:
+        bad.append("east %+.2f, wanted %+.1f" % (n.pos[1], start[0]))
+    if abs(n.pos[0] - start[1]) > 2.0:
+        bad.append("north %+.2f, wanted %+.1f" % (n.pos[0], start[1]))
+    if n.pos[0] > wall_north:
         bad.append("already past the wall")
-    if n.pos[2] < ALT - 2.0:
+    if n.pos[2] < alt - 2.0:
         bad.append("alt %.2f, wanted %.1f. Below ~3 m the costmap slab "
                    "includes the ground, which fills it with obstacles"
-                   % (n.pos[2], ALT))
+                   % (n.pos[2], alt))
     if bad:
         print()
         print("  ABORT: preconditions not met, so any result would be")
@@ -241,8 +273,8 @@ def main():
     g = NavigateToPose.Goal()
     g.pose.header.frame_id = 'odom'
     g.pose.header.stamp = n.get_clock().now().to_msg()
-    g.pose.pose.position.x = float(GOAL[0])
-    g.pose.pose.position.y = float(GOAL[1])
+    g.pose.pose.position.x = float(goal[0])
+    g.pose.pose.position.y = float(goal[1])
     g.pose.pose.orientation.w = 1.0
     # Positioning used brake mode on purpose: the pilot's own goal flying is
     # the reliable way to get into place. Planning needs plan mode, which is
@@ -262,7 +294,7 @@ def main():
         return 2
 
     print("  sending Nav2 goal: east %.1f north %.1f (wall at north %.1f)"
-          % (GOAL[0], GOAL[1], WALL_NORTH))
+          % (goal[0], goal[1], wall_north))
     fut = n.ac.send_goal_async(g)
     t = time.time()
     while not fut.done() and time.time() - t < 15:
@@ -281,7 +313,7 @@ def main():
         rclpy.spin_once(n, timeout_sec=0.1)
         if n.pos:
             n.track.append((n.pos[1], n.pos[0], time.time()))
-            if n.pos[0] > WALL_NORTH + 1.0:
+            if n.pos[0] > wall.y_max:
                 crossed = True
         if int(time.time() - t0) % 6 == 0:
             time.sleep(0.25)
@@ -299,7 +331,7 @@ def main():
     print("  plans produced:      %d" % n.plan_n)
     print("  cmd_vel messages:    %d" % n.cmds)
     print("  final east %+.2f north %+.2f" % (n.pos[1], n.pos[0]))
-    east_excursion = max(abs(p[0] - START[0]) for p in n.track) if n.track else 0
+    east_excursion = max(abs(p[0] - start[0]) for p in n.track) if n.track else 0
     print("  furthest sideways excursion from the start line: %.2f m"
           % east_excursion)
     rc = 1
@@ -310,15 +342,24 @@ def main():
     elif n.cmds == 0:
         print("  FAIL: paths planned but no cmd_vel, so the controller is not")
         print("        following them.")
+    elif crossed and math.hypot(n.pos[1] - goal[0], n.pos[0] - goal[1]) > 4.0:
+        # Crossing the wall line is not enough. Measured once with the lidar
+        # model: the controller hugged the wall's face at 0.1 m, the rotors
+        # touched it, and the tumbling aircraft crossed north 5.5 on its way
+        # to the ground 78 m away. That printed PASS.
+        print("  FAIL: crossed the wall line but ended %.1f m from the goal, at"
+              " %.1f m altitude. A crash or a runaway, not a route."
+              % (math.hypot(n.pos[1] - goal[0], n.pos[0] - goal[1]), n.pos[2]))
     elif crossed:
         rc = 0
-        print("  PASS: got past the wall at north %.1f, which the base "
-              "stack cannot do." % WALL_NORTH)
+        print("  PASS: got past the wall at north %.1f and ended %.1f m from the"
+              " goal, which the base stack cannot do."
+              % (wall_north, math.hypot(n.pos[1] - goal[0], n.pos[0] - goal[1])))
         print("        Sideways excursion %.1f m, so it routed around rather "
               "than through." % east_excursion)
     else:
         print("  PARTIAL: Nav2 planned and drove, but never got past north")
-        print("           %.1f. Either the detour is longer than the time" % WALL_NORTH)
+        print("           %.1f. Either the detour is longer than the time" % wall_north)
         print("           allowed, or it is stuck against the wall.")
     print()
     print("  back to BRAKE mode")

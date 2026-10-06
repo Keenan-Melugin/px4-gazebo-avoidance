@@ -50,6 +50,8 @@ Q_FRD_FLU = (0.0, 1.0, 0.0, 0.0)
 #   <pose>.12 .03 .242 0 0 0</pose>, no rotation. Gazebo link axes are FLU,
 # which is what ROS base_link uses, so this is a pure translation.
 CAM_XYZ = (0.12, 0.03, 0.242)
+# The 2D lidar on models/x500_depth_lidar (model.sdf pose, FLU), for TF.
+LIDAR_XYZ = (-0.10, 0.0, 0.30)
 
 # A goal whose frame id carries this suffix wants its heading held too.
 # Position-only senders leave it off and the aircraft keeps its current yaw.

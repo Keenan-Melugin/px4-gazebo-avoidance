@@ -273,6 +273,19 @@ else
   printf '  note  install mesa-utils to check this (glxinfo).\n'
 fi
 
+say "Linking this repository's worlds and models into PX4's Gazebo tree"
+# PX4 only loads worlds and models from its own Tools/simulation/gz, and its
+# generated gz_env.sh overwrites the variables that name that directory, so
+# the extra world and the lidar model are symlinked in. scripts/link_assets.sh
+# says why; rerun it after adding a world or model, or after cleaning PX4.
+if bash "$HERE/scripts/link_assets.sh"; then
+  ok "linked"
+else
+  warn "not linked. PX4 is not at ~/PX4-Autopilot yet (README step 2); run
+        scripts/link_assets.sh afterwards, or the pillars world and the lidar
+        model will not be found."
+fi
+
 say "Done"
 cat <<EOF
   Source the workspace, then run it in two terminals:

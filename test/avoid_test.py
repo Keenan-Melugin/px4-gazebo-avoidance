@@ -6,6 +6,7 @@ The previous run could not judge anything because the aircraft had drifted
 with avoidance off (otherwise it cannot get back past the walls it is being
 protected from), then turns avoidance on and flies at a known wall.
 """
+import argparse
 import math
 import subprocess
 import time
@@ -18,11 +19,14 @@ from geometry_msgs.msg import PoseStamped
 from px4_msgs.msg import (VehicleCommand, VehicleLocalPosition,
                           VehicleStatus)
 
+from avoidance_sim import world_geometry
+
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
 
-WALL_FACE = 4.50      # box1, east face
+# The wall comes from the world file (--world): the first box east of the start
+# at north 0, which for walls is box1's west face at east +4.5.
 CP_DIST = 2.0
 START_EAST = -4.0
 
@@ -94,6 +98,20 @@ def spin(n, s):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--world', default='walls',
+                    help='world name (as PX4_GZ_WORLD) or path to its .sdf')
+    a = ap.parse_args()
+    world = world_geometry.resolve_world(a.world)
+    hit = world_geometry.first_face_ahead(
+        world_geometry.load_boxes(world), START_EAST, 0.0, 6.0, 'east')
+    if hit is None:
+        print("  no box east of east %+.1f north 0 at 6 m in %s" % (START_EAST, a.world))
+        return 2
+    WALL_FACE, wall = hit
+    print("  world %s: flying at %s, face at east %+.2f"
+          % (world_geometry.world_name(world), wall.name, WALL_FACE))
+
     rclpy.init()
     n = A()
     spin(n, 4.0)

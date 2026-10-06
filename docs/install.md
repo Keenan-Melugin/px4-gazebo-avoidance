@@ -135,6 +135,9 @@ Micro XRCE-DDS Agent from source and installs it to `/usr/local`. It clones
 and builds `px4_msgs`, 235 messages that exist only as source on every
 platform. It links this package into a workspace at `~/av_ws` (override with
 `WS=...`), installs the dependencies including Nav2 with `rosdep`, and builds.
+It then links this repository's extra world and aircraft model into PX4's
+Gazebo tree (`scripts/link_assets.sh`; [extend.md](extend.md) says why PX4
+needs that).
 Under 8 GB it limits the compilers to two jobs.
 
 Measured: 18 minutes, peak 1.4 GB.
@@ -196,6 +199,9 @@ each one as `[px4_params]`:
 [how-it-works.md](how-it-works.md) says why each is what it is, and why they
 are set this way rather than typed at `pxh>`. If PX4 lives somewhere other
 than `~/PX4-Autopilot`, pass `px4_bin:=/path/to/build/px4_sitl_default/bin`.
+For another world, `PX4_GZ_WORLD=pillars` in terminal 1 and `world:=pillars`
+in terminal 2, so RViz draws the walls PX4 loaded; [extend.md](extend.md)
+has that and the aircraft with the extra lidar.
 
 ### Is it working?
 

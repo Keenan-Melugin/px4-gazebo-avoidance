@@ -104,6 +104,12 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'agent_cmd', default_value='MicroXRCEAgent',
             description='Passed through to the base stack.'),
+        DeclareLaunchArgument(
+            'world', default_value='walls',
+            description='Passed through: the world PX4 was started with.'),
+        DeclareLaunchArgument(
+            'lidar', default_value='false',
+            description='Passed through: the aircraft carries the extra lidar.'),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -112,6 +118,8 @@ def generate_launch_description():
                 'rviz': LaunchConfiguration('rviz'),
                 'agent': LaunchConfiguration('agent'),
                 'agent_cmd': LaunchConfiguration('agent_cmd'),
+                'world': LaunchConfiguration('world'),
+                'lidar': LaunchConfiguration('lidar'),
             }.items()),
 
         # The depth cloud flattened into a 2D scan, because Nav2 costmaps are

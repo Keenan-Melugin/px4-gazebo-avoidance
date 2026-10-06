@@ -39,11 +39,21 @@ PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 | Part | What it does |
 |---|---|
 | `PX4_GZ_WORLD=walls` | Loads the world with the obstacle walls. Omit for an empty one |
+| `PX4_GZ_WORLD=pillars` | The second world, from this repository's `worlds/`, linked into PX4's tree by `scripts/link_assets.sh` |
 | `HEADLESS=1` | Suppresses the Gazebo GUI. Worth 10 to 45% of real-time factor. The server still renders the depth camera |
 | `gz_x500_depth` | The airframe. Plain `gz_x500` has no camera and will not work |
 | `PX4_GZ_SIM_RENDER_ENGINE=ogre` | Add this on a Raspberry Pi. Its driver caps desktop OpenGL at 3.1 and Gazebo's default renderer needs 3.3 |
 
 This leaves you at a `pxh>` prompt. That prompt is PX4's own shell, not bash.
+
+The aircraft with the extra 2D lidar (`models/x500_depth_lidar`) starts through
+PX4's binary, because `make` targets exist only for models with an airframe
+file in PX4's tree; `PX4_SYS_AUTOSTART=4002` reuses the x500_depth airframe:
+
+```bash
+cd ~/PX4-Autopilot && PX4_SYS_AUTOSTART=4002 PX4_SIM_MODEL=gz_x500_depth_lidar \
+    PX4_GZ_WORLD=walls HEADLESS=1 ./build/px4_sitl_default/bin/px4
+```
 
 ### Terminal 2: the ROS 2 side
 
@@ -59,7 +69,9 @@ RViz-side nodes, and RViz. Arguments:
 | `rviz:=false` | true | Skip RViz, for a headless run or a test |
 | `agent:=false` | true | You already have an agent running. Otherwise the second one collides on UDP 8888 |
 | `agent_cmd:=/path/to/MicroXRCEAgent` | `MicroXRCEAgent` | The agent is not on `PATH` |
-| `world_sdf:=/path/to/world.sdf` | the node default | PX4 lives somewhere other than `~/PX4-Autopilot`, or you want different wall outlines |
+| `world:=pillars` | `walls` | The world PX4 was started with, so RViz draws its walls. Looked up where PX4 looks, then in this package's `worlds/` |
+| `world_sdf:=/path/to/world.sdf` | empty | A world file by path instead of by name |
+| `lidar:=true` | false | The aircraft is `models/x500_depth_lidar`: bridge its `/lidar` scan and merge it into the histogram |
 | `px4_bin:=/path/to/build/px4_sitl_default/bin` | `~/PX4-Autopilot/build/px4_sitl_default/bin` | Where `px4-param` is, for setting the parameters below |
 | `px4_params:="CP_DIST=3.0 ..."` | the four below | Change the parameters the launch sets. `px4_params:=""` skips it |
 
@@ -211,7 +223,10 @@ Each script needs the stack running and flies the aircraft. They are
 measurements, not unit tests.
 
 ```bash
+python3 test/histogram_selftest.py   # the obstacle node alone, no simulator, two seconds
+python3 -m avoidance_sim.world_geometry pillars --from 0 0 --dir east   # what the tests see in a world
 python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, about 8 min
+python3 test/gate.py --world pillars   # the same gate in the second world
 python3 test/avoid_test.py       # standoff from a wall. Repositions itself first
 python3 test/regression.py       # brake mode: heading hold and the standoff, exit code counts failures
 python3 test/mode_test.py        # the brake/plan toggle, both directions
