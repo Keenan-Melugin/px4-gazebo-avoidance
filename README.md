@@ -198,6 +198,47 @@ One surprise worth knowing: with `CP_DIST` set, PX4 forces Loiter if the
 obstacle stream stops for five seconds. Stopping the ROS stack mid-flight will
 change the aircraft's mode.
 
+## Path planning with Nav2 (experimental)
+
+The base stack brakes for obstacles. A second, opt-in layer plans around them:
+
+```bash
+ros2 launch avoidance_sim nav2.launch.py
+```
+
+**Status: incomplete.** It plans, it drives the aircraft, and it does route
+around a wall rather than at it. It does not yet reliably reach a goal on the
+far side, so treat it as a working integration rather than a working
+capability.
+
+**One finding from it is solid and matters more than the feature.** PX4
+collision prevention and a path planner cannot both own the same axis. A
+planner approaches obstacles deliberately in order to get around them, and
+collision prevention exists to veto motion toward obstacles, so the lower
+layer vetoes the plan. Measured with one A/B, identical goal:
+
+| `CP_DIST` | Nav2 commanded | aircraft achieved | outcome |
+|---|---|---|---|
+| 1.0 | 1.50 m/s | **0.00 m/s** | deadlocked in front of the wall |
+| -1 (off) | 1.50 m/s | **1.24 m/s** | rounded the end of the wall |
+
+So run `param set CP_DIST -1` before using Nav2, and leave it on for the base
+stack where it is the entire mechanism. Collision prevention is a
+manual-flight assist, not a composable safety layer.
+
+Two more things measured here, both consequences of the sensor rather than the
+software:
+
+- **Standoff is geometry.** The camera sees a 73 degree arc, so at range R it
+  covers 1.48*R of width. Planning around a 10 m wall needs roughly 10 m of
+  observation distance. From 3.5 m it sees 5 m of wall, neither end, and can
+  never find a route it has not observed.
+- **The global costmap must not clear.** With a 73 degree arc and clearing on,
+  every cell the scan stops covering is raytraced clear, so turning the nose
+  away forgets the wall and the planner draws a straight line through it.
+  Before the fix: a 7.0 m plan for a 6.9 m straight-line goal with a wall in
+  between.
+
 ## Platform support
 
 | Platform | Status |

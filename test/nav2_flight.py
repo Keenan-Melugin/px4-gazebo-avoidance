@@ -30,7 +30,12 @@ QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
 
-START = (-2.0, 0.0)      # east, north: south of box2, within its east-west span
+# Standoff matters, and it is geometry rather than taste. box2 is 10 m wide
+# (east -8 to +2) and the camera sees a 73 degree arc, so at range R it covers
+# 2*R*tan(36.5) = 1.48*R of width. To see a 10 m obstacle AND both of its ends
+# the aircraft has to observe from about 10 m back; from 3.5 m it sees 5 m of
+# wall and no ends, so the planner can never find a way round.
+START = (-2.0, -9.0)     # east, north: 13.5 m south of box2's face
 GOAL = (-2.0, 10.0)      # east, north: north of box2
 WALL_NORTH = 4.5         # box2's south face
 ALT = 8.0
@@ -83,6 +88,12 @@ class N2(Node):
         self.cmds += 1
         self.last_cmd = (m.linear.x, m.linear.y, m.angular.z)
 
+    def speed(self):
+        if len(self.track) < 20:
+            return 0.0
+        a, b = self.track[-20], self.track[-1]
+        return math.hypot(b[0] - a[0], b[1] - a[1]) / 2.0
+
     def goal_pilot(self, east, north, alt, hdg=None):
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
@@ -124,8 +135,24 @@ def main():
     if n.pos is None:
         print("  no position"); return 1
 
+    # Cancel anything Nav2 is still driving. Without this a goal left running
+    # from a previous attempt keeps publishing cmd_vel, the pilot stays in
+    # velocity mode, and the repositioning goal below is silently ignored.
+    if n.ac.wait_for_server(timeout_sec=10.0):
+        fut = n.ac._cancel_goal_async if False else None
+        try:
+            from action_msgs.srv import CancelGoal
+            cli = n.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+            if cli.wait_for_service(timeout_sec=5.0):
+                req = CancelGoal.Request()          # blank = cancel all
+                cli.call_async(req)
+                print("  cancelled any running Nav2 goal")
+                spin(n, 3.0)
+        except Exception as exc:
+            print("  could not cancel: %s" % exc)
+
     n.stop_pilot()
-    spin(n, 4.0)
+    spin(n, 5.0)
     if not n.armed:
         for _ in range(20):
             if n.healthy:
@@ -139,7 +166,7 @@ def main():
     print("  positioning at east %.1f north %.1f alt %.1f, facing north"
           % (START[0], START[1], ALT))
     n.goal_pilot(START[0], START[1], ALT, 0.0)
-    for _ in range(40):
+    for _ in range(75):
         spin(n, 1.0)
         if (abs(n.pos[1] - START[0]) < 1.2 and abs(n.pos[0] - START[1]) < 1.2
                 and n.pos[2] > ALT - 1.5):
@@ -201,7 +228,7 @@ def main():
     res = gh.get_result_async()
     t0 = time.time()
     crossed = False
-    while time.time() - t0 < 110:
+    while time.time() - t0 < 300:
         rclpy.spin_once(n, timeout_sec=0.1)
         if n.pos:
             n.track.append((n.pos[1], n.pos[0]))
@@ -211,10 +238,10 @@ def main():
             time.sleep(0.25)
             c = n.last_cmd or (0, 0, 0)
             print("    t+%3ds east %+6.2f north %+6.2f | plans %2d len %s | "
-                  "cmd_vel %4d fwd%+5.2f left%+5.2f"
+                  "cmd_vel %4d fwd%+5.2f left%+5.2f | %.2f m/s actual"
                   % (time.time() - t0, n.pos[1], n.pos[0], n.plan_n,
                      ("%.1f m" % n.plan_len) if n.plan_len else "none",
-                     n.cmds, c[0], c[1]))
+                     n.cmds, c[0], c[1], n.speed()))
         if res.done():
             break
 

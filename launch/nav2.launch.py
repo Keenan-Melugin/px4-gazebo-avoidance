@@ -12,17 +12,31 @@ What this adds:
     depth cloud --> pointcloud_to_laserscan --> /scan --> Nav2 costmaps
     goal --> planner --> MPPI controller --> /cmd_vel --> software pilot
 
-The last arrow is the design decision. Nav2's /cmd_vel could be turned into
-PX4 trajectory setpoints in Offboard mode, which is the obvious route and the
-one PX4's own docs lead you to. It is also the wrong one here: PX4 holds
-collision prevention only in its manual Position-mode flight tasks, so
-Offboard silently discards it and makes Nav2 solely responsible for not
-hitting things.
+The last arrow is the design decision, and the first version of this got it
+wrong in a way worth recording.
 
-Routing /cmd_vel through the software pilot instead keeps the aircraft in
-Position mode, so PX4's collision prevention stays underneath Nav2 as an
-independent backstop. Nav2 plans around obstacles; PX4 still brakes if the
-plan drives at one.
+The intent was defence in depth. Nav2's /cmd_vel could be turned into PX4
+trajectory setpoints in Offboard mode, which is the obvious route, but PX4
+holds collision prevention only in its manual Position-mode flight tasks, so
+Offboard discards it. Routing /cmd_vel through the software pilot keeps the
+aircraft in Position mode, which looked like a way to have Nav2 plan around
+obstacles while PX4 still braked if the plan drove at one.
+
+It does not work, and the reason is structural rather than a tuning problem.
+A planner approaches an obstacle deliberately in order to go around it, and
+collision prevention exists to veto motion toward obstacles, so the lower
+layer vetoes the upper layer plan. Measured with one A/B, same goal and same
+everything else:
+
+    CP_DIST 1.0   Nav2 commanded 1.50 m/s forward, achieved 0.00 m/s,
+                  deadlocked in front of the wall
+    CP_DIST -1    achieved 1.24 m/s and rounded the end of the wall
+
+So PX4 collision prevention must be OFF while Nav2 drives. It is a
+manual-flight assist and it does not compose with an autonomous planner on
+the same axis. Keep it for the base stack, where it is the whole mechanism.
+
+    param set CP_DIST -1        # at the pxh> prompt, before using Nav2
 
 Nav2 is two-dimensional. It plans in the horizontal plane and knows nothing
 about altitude, which stays with the pilot.
