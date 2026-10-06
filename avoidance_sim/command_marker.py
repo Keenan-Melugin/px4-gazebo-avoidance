@@ -8,6 +8,8 @@ assumed; see the repository README for the numbers and the traps.
 from rclpy.node import Node
 
 from interactive_markers import InteractiveMarkerServer, MenuHandler
+from std_msgs.msg import String
+
 from px4_msgs.msg import VehicleCommand, VehicleCommandAck, VehicleStatus
 from visualization_msgs.msg import (InteractiveMarker,
     InteractiveMarkerControl,
@@ -46,6 +48,15 @@ class CommandMarker(Node):
 
         self.server = InteractiveMarkerServer(self, 'px4_commands')
         self.menu = MenuHandler()
+        # Avoidance is either PX4's or the planner's, never both: collision
+        # prevention vetoes a planner, so the two are exclusive. Switching
+        # mode switches PX4's flight mode, which is what decides whether
+        # collision prevention applies at all.
+        self.mode_pub = self.create_publisher(String, '/avoidance_sim/mode', 10)
+        self.menu.insert('MODE: brake (PX4 avoids, no planning)',
+                         callback=lambda fb: self.set_mode('brake'))
+        self.menu.insert('MODE: plan (Nav2 avoids, no PX4 braking)',
+                         callback=lambda fb: self.set_mode('plan'))
         self.menu.insert('ARM', callback=lambda fb: self.arm())
         self.menu.insert('TAKEOFF', callback=lambda fb: self.takeoff())
         self.menu.insert('LAND', callback=lambda fb: self.land())
@@ -108,6 +119,12 @@ class CommandMarker(Node):
                     f'takeoff mode rejected (result {m.result}), not arming')
 
     # ---------------- actions ----------------
+    def set_mode(self, name):
+        m = String()
+        m.data = name
+        self.mode_pub.publish(m)
+        self.get_logger().info(f'MODE -> {name}')
+
     def arm(self):
         self.get_logger().info('ARM')
         self.send(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,

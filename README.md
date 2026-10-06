@@ -222,9 +222,26 @@ layer vetoes the plan. Measured with one A/B, identical goal:
 | 1.0 | 1.50 m/s | **0.00 m/s** | deadlocked in front of the wall |
 | -1 (off) | 1.50 m/s | **1.24 m/s** | rounded the end of the wall |
 
-So run `param set CP_DIST -1` before using Nav2, and leave it on for the base
-stack where it is the entire mechanism. Collision prevention is a
-manual-flight assist, not a composable safety layer.
+Rather than making you reconfigure PX4, that choice is a runtime mode. Publish
+on `/avoidance_sim/mode`, or use the RViz right-click menu:
+
+| Mode | PX4 flight mode | Who avoids |
+|---|---|---|
+| `brake` | Position | PX4 collision prevention, the whole mechanism |
+| `plan` | Offboard | Nav2. PX4 has no collision prevention in Offboard |
+
+Switching the flight mode rather than `CP_DIST` is what makes this clean:
+nothing needs reconfiguring, because collision prevention does not apply in
+Offboard at all. Verified by leaving `CP_DIST` at 2.0 for a whole test, the
+value that previously deadlocked the planner, and watching plan mode track
+1.00 m/s commanded to 1.00 m/s achieved.
+
+```bash
+ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}"
+```
+
+Collision prevention is a manual-flight assist, not a composable safety
+layer.
 
 Two more things measured here, both consequences of the sensor rather than the
 software:

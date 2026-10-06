@@ -10,7 +10,10 @@ import math
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped, Twist
+from std_msgs.msg import String
 from px4_msgs.msg import (ManualControlSetpoint,
+    OffboardControlMode,
+    TrajectorySetpoint,
     VehicleCommand,
     VehicleLocalPosition,
     VehicleStatus)
@@ -106,6 +109,27 @@ class SoftwarePilot(Node):
     # camera looks along the path rather than wherever the nose was left.
     ALIGN_MIN_SPEED = 0.25              # m/s. Below this, do not chase noise.
     KP_ALIGN = 1.0                      # rad/s per rad of misalignment
+
+    # Two ways to fly, chosen at runtime on /avoidance_sim/mode.
+    #
+    #   brake  Position mode, synthetic sticks. PX4 collision prevention is
+    #          live and is the entire avoidance mechanism.
+    #   plan   Offboard mode, TrajectorySetpoint velocity. PX4 holds
+    #          CollisionPrevention only in its manual Position-mode flight
+    #          tasks, so Offboard has none and the planner owns avoidance.
+    #
+    # They are exclusive because collision prevention vetoes a planner.
+    # Measured: with CP at 1.0 m the planner commanded 1.50 m/s and the
+    # aircraft achieved 0.00, deadlocked; with CP off it achieved 1.24 and
+    # rounded the wall. Switching mode rather than switching CP_DIST means
+    # nothing has to be reconfigured, because CP simply does not apply in
+    # Offboard.
+    MODE_BRAKE = 'brake'
+    MODE_PLAN = 'plan'
+    # PX4 drops Offboard if the setpoint stream stops for COM_OF_LOSS_T,
+    # which is 1.0 s by default, so plan mode keeps streaming zeros when Nav2
+    # goes quiet rather than going silent and tripping the failsafe.
+    OFFBOARD_WARMUP = 1.2               # s of setpoints before asking for the mode
     DEADBAND = 0.4     # m
     ARRIVED = 0.6      # m
 
@@ -143,6 +167,14 @@ class SoftwarePilot(Node):
         self.nav = None
         self.goal = None         # (north, east, alt)
         self.goal_yaw = None     # NED heading, radians. None = do not turn.
+        self.mode = self.MODE_BRAKE
+        self.offboard_since = None
+        self.offboard_pub = self.create_publisher(
+            OffboardControlMode, '/fmu/in/offboard_control_mode', PX4_QOS)
+        self.traj_pub = self.create_publisher(
+            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', PX4_QOS)
+        self.create_subscription(String, '/avoidance_sim/mode',
+                                 self.on_mode, 10)
         self.cmd_vel = None      # (vx, vy, wz) in base_link FLU
         self.cmd_vel_t = 0.0
         self.hold_alt = None     # altitude to keep while Nav2 drives XY
@@ -217,6 +249,112 @@ class SoftwarePilot(Node):
         # Position mode is enterable because we are already streaming sticks.
         self.request_posctl()
 
+    def on_mode(self, m):
+        want = (m.data or '').strip().lower()
+        if want not in (self.MODE_BRAKE, self.MODE_PLAN):
+            self.get_logger().warn(
+                f'ignoring unknown mode {want!r}; use '
+                f'{self.MODE_BRAKE!r} or {self.MODE_PLAN!r}')
+            return
+        if want == self.mode:
+            return
+        self.mode = want
+        if want == self.MODE_PLAN:
+            self.active = False
+            self.goal = None
+            self.vel_mode = False
+            self.offboard_since = self.now_s()
+            self.hold_alt = -self.pos[2] if self.pos else None
+            self.get_logger().info(
+                'PLAN mode: Offboard, velocity setpoints, planner owns '
+                'avoidance. PX4 collision prevention does not apply here.')
+        else:
+            self.offboard_since = None
+            self.get_logger().info(
+                'BRAKE mode: Position mode on sticks, PX4 collision '
+                'prevention live.')
+            self.request_posctl()
+
+    def request_offboard(self):
+        c = VehicleCommand()
+        c.timestamp = self.get_clock().now().nanoseconds // 1000
+        c.command = VehicleCommand.VEHICLE_CMD_DO_SET_MODE
+        c.param1 = 1.0
+        c.param2 = 6.0     # PX4_CUSTOM_MAIN_MODE_OFFBOARD
+        c.target_system = 1
+        c.target_component = 1
+        c.source_system = 1
+        c.source_component = 1
+        c.from_external = True
+        self.cmd.publish(c)
+
+    def tick_plan(self):
+        """Offboard velocity setpoints from Nav2, in NED.
+
+        TrajectorySetpoint.velocity is the NED world frame; cmd_vel is
+        base_link FLU. Rotating one into the other is the kind of conversion
+        that produces believable numbers when it is wrong, so it is measured
+        rather than trusted: see test/offboard_frame_check.py.
+        """
+        # The stream has to exist before PX4 will accept the mode, and has to
+        # keep existing or PX4 drops out of it.
+        oc = OffboardControlMode()
+        oc.timestamp = self.get_clock().now().nanoseconds // 1000
+        oc.position = False
+        oc.velocity = True
+        oc.acceleration = False
+        oc.attitude = False
+        oc.body_rate = False
+        self.offboard_pub.publish(oc)
+
+        fresh = (self.cmd_vel is not None
+                 and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+        vx, vy, wz = self.cmd_vel if fresh else (0.0, 0.0, 0.0)
+
+        t = TrajectorySetpoint()
+        t.timestamp = self.get_clock().now().nanoseconds // 1000
+        t.position = [float('nan')] * 3
+        t.acceleration = [float('nan')] * 3
+
+        # body FLU -> body FRD -> NED, using the current heading.
+        cy, sy = math.cos(self.yaw), math.sin(self.yaw)
+        vn = vx * cy + vy * sy
+        ve = vx * sy - vy * cy
+
+        # Nav2 knows nothing about altitude. vd is DOWN positive, so climbing
+        # needs a negative value.
+        vd = 0.0
+        if self.pos is not None and self.hold_alt is not None:
+            ez = self.hold_alt - (-self.pos[2])
+            u = self.KP_Z * ez - self.KD_Z * (-self.vel[2])
+            if math.isfinite(u):
+                vd = float(-max(-2.0, min(2.0, u)))
+        t.velocity = [float(vn), float(ve), vd]
+
+        # Yaw comes from the planner, and ONLY from the planner.
+        #
+        # The first version also slaved the heading to the direction of
+        # travel here, as brake mode does, and that is unstable in this
+        # branch: cmd_vel is a BODY frame velocity, so it is rotated into NED
+        # using the current heading, and then setting the yaw target to the
+        # direction of that NED vector feeds the heading back into its own
+        # input. The result is runaway rotation. Measured: headings swinging
+        # through 120 degrees while the aircraft translated under a metre in
+        # eleven seconds, for every commanded direction.
+        #
+        # Brake mode can slave the heading because nothing else is steering
+        # there. Here the pure-pursuit controller already emits angular.z to
+        # turn toward its path, so the planner owns the heading and the pilot
+        # must not also have an opinion about it.
+        t.yaw = float('nan')
+        t.yawspeed = float(-wz) if abs(wz) > 0.02 else 0.0
+        self.traj_pub.publish(t)
+
+        if (self.offboard_since is not None
+                and self.now_s() - self.offboard_since > self.OFFBOARD_WARMUP):
+            if self.nav != 14:          # NAVIGATION_STATE_OFFBOARD
+                self.request_offboard()
+
     def on_cmd_vel(self, m):
         self.cmd_vel = (m.linear.x, m.linear.y, m.angular.z)
         self.cmd_vel_t = self.now_s()
@@ -254,6 +392,10 @@ class SoftwarePilot(Node):
         self.get_logger().info('pilot stopped, holding position')
 
     def tick(self):
+        if self.mode == self.MODE_PLAN:
+            self.tick_plan()
+            return
+
         m = ManualControlSetpoint()
         m.timestamp = self.get_clock().now().nanoseconds // 1000
         m.timestamp_sample = m.timestamp
@@ -405,6 +547,18 @@ class SoftwarePilot(Node):
         self.pub.publish(m)
 
     def report(self):
+        if self.mode == self.MODE_PLAN:
+            if self.pos is None:
+                return
+            fresh = (self.cmd_vel is not None
+                     and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+            vx, vy, _ = self.cmd_vel if fresh else (0.0, 0.0, 0.0)
+            self.get_logger().info(
+                f'PLAN nav={self.nav}{"" if self.nav == 14 else " (not OFFBOARD yet)"} '
+                f'cmd fwd{vx:+.2f} left{vy:+.2f} '
+                f'alt{-self.pos[2]:.1f}/{self.hold_alt or 0:.1f} '
+                f'{"[stale, holding]" if not fresh else ""}')
+            return
         if self.vel_mode and self.pos is not None:
             vx, vy, wz = self.cmd_vel or (0.0, 0.0, 0.0)
             self.get_logger().info(
