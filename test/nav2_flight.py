@@ -157,9 +157,15 @@ def spin(n, s):
 def main():
     rclpy.init()
     n = N2()
-    spin(n, 4.0)
+    # Up to 20 s for the first position. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had not
+    # finished and the test quit with "no position".
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
     if n.pos is None:
-        print("  no position"); return 1
+        print("  no position after 20 s"); return 1
 
     # Cancel anything Nav2 is still driving. Without this a goal left running
     # from a previous attempt keeps publishing cmd_vel, the pilot stays in

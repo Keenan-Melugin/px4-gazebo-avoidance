@@ -149,9 +149,7 @@ source ~/av_ws/install/setup.bash
 Terminal 1, PX4 and Gazebo:
 
 ```bash
-cd ~/PX4-Autopilot
-PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \
-PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
+cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 ```
 
 `HEADLESS=1` suppresses the Gazebo GUI and buys back 10 to 45% of real-time
@@ -171,26 +169,31 @@ PX4 is not in the launch file on purpose: starting it means running a make
 target from the PX4 source tree, and burying a build inside a launch file
 makes failures hard to read.
 
-The four `PX4_PARAM_` variables are PX4 parameters. PX4's own SITL startup
-script applies any `PX4_PARAM_<NAME>` it finds in the environment with
-`param set`, so this is the same as typing them at the `pxh>` prompt, without
-the typing. All four are needed:
+The launch also sets four PX4 parameters the stack needs, through PX4's own
+`px4-param` client, as soon as PX4 answers. It logs each one. If PX4 is not at
+`~/PX4-Autopilot`, pass `px4_bin:=/path/to/build/px4_sitl_default/bin`; to
+change them, `px4_params:="CP_DIST=3.0 ..."`; to skip, `px4_params:=""`.
 
-| Parameter | Why it is in the command |
+| Parameter | Why the stack sets it |
 |---|---|
 | `NAV_DLL_ACT=0` | The x500 airframe defaults this to 2: refuse to arm until a ground station connects. There is no ground station here, so without it PX4 repeats `Preflight Fail: No connection to the GCS` and nothing you do in RViz will fly. Found on the first clean-machine install; the development machine had it saved from months before |
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
 | `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are honestly unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
 
-They persist in `~/PX4-Autopilot/build/px4_sitl_default/rootfs/parameters.bson`,
-so after the first run they stay set; keeping the variables in the command is
-harmless and makes the command self-contained.
+They persist in `~/PX4-Autopilot/build/px4_sitl_default/rootfs/parameters.bson`.
+Setting them this way rather than as `PX4_PARAM_` environment variables on the
+PX4 command is deliberate: PX4 applies those before the airframe file and
+records a value equal to the compiled default as "still default", so
+`NAV_DLL_ACT=0` is overridden by the airframe's 2. Measured on a clean machine;
+`scripts/px4_params.sh` carries the note.
 
 ### Is it working?
 
-Terminal 1 prints `Ready for takeoff!` within about 30 s. If it repeats
-`Preflight Fail: No connection to the GCS` instead, `NAV_DLL_ACT` did not take.
+Terminal 1 prints `Ready for takeoff!` within about 30 s of the launch coming
+up. Before the launch sets `NAV_DLL_ACT`, it repeats `Preflight Fail: No
+connection to the GCS`; that is expected. If it keeps repeating it afterwards,
+the launch could not reach `px4-param` and said so: check `px4_bin`.
 
 ```bash
 ros2 topic hz /fmu/out/vehicle_local_position_v1   # about 50 Hz
@@ -336,9 +339,7 @@ display, but nobody has confirmed it.
 If you try it, PX4 has the switch built in:
 
 ```bash
-PX4_GZ_SIM_RENDER_ENGINE=ogre \
-PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \
-PX4_GZ_WORLD=walls make px4_sitl gz_x500_depth
+PX4_GZ_SIM_RENDER_ENGINE=ogre PX4_GZ_WORLD=walls make px4_sitl gz_x500_depth
 ```
 
 Expect the `px4_msgs` build to take far longer than on a desktop and to risk

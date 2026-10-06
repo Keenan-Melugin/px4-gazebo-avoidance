@@ -5,15 +5,16 @@ PX4 source tree, which is a build step as much as a run step, and burying a
 build inside a launch file makes failures hard to read. So this is two
 commands rather than one:
 
-    cd ~/PX4-Autopilot
-    PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \\
-    PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
+    cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
     ros2 launch avoidance_sim sim.launch.py
 
-The PX4_PARAM_ variables are PX4 parameters, applied at boot by PX4's SITL
-startup script; the README's Run section says what each is for. NAV_DLL_ACT
-is the one a fresh install cannot do without: the airframe default waits for
-a ground station and never arms, which the first clean-machine test found.
+This launch also sets the four PX4 parameters the stack needs, through PX4's
+own px4-param client, as soon as PX4 answers (px4_params to change them,
+px4_bin if PX4 is not at ~/PX4-Autopilot). The clean-clone test found that a
+fresh install never arms: the x500 airframe defaults NAV_DLL_ACT to 2, wait
+for a ground station, and the development machine had 0 saved for months.
+scripts/px4_params.sh says why it is done this way and not with PX4_PARAM_
+environment variables, which cannot set that one.
 
 Down from the four terminals in a fixed order that this replaces.
 
@@ -59,6 +60,15 @@ def generate_launch_description():
             'agent_cmd', default_value='MicroXRCEAgent',
             description='Path to the agent binary, if it is not on PATH.'),
         DeclareLaunchArgument(
+            'px4_bin',
+            default_value=os.path.expanduser('~/PX4-Autopilot/build/px4_sitl_default/bin'),
+            description='PX4 SITL build bin directory, for px4-param.'),
+        DeclareLaunchArgument(
+            'px4_params',
+            default_value='NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=2.0 CP_GO_NO_DATA=1',
+            description='PX4 parameters set once PX4 answers. The README '
+                        'says why each is needed. Empty string to skip.'),
+        DeclareLaunchArgument(
             'world_sdf', default_value='',
             description='Gazebo world file to draw obstacles from. Empty '
                         'means the node default, ~/PX4-Autopilot/Tools/'
@@ -69,6 +79,14 @@ def generate_launch_description():
         ExecuteProcess(
             condition=IfCondition(use_agent),
             cmd=[agent_cmd, 'udp4', '-p', '8888'],
+            output='screen'),
+
+        # The parameters PX4 needs for this stack, set by PX4's own client once
+        # PX4 is up. NAV_DLL_ACT 0 is the one a fresh install cannot fly
+        # without; scripts/px4_params.sh has the whole story.
+        ExecuteProcess(
+            cmd=['bash', os.path.join(share, 'scripts', 'px4_params.sh'),
+                 LaunchConfiguration('px4_bin'), LaunchConfiguration('px4_params')],
             output='screen'),
 
         Node(

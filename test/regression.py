@@ -101,9 +101,15 @@ def spin(n, s):
 def main():
     rclpy.init()
     n = R()
-    spin(n, 4.0)
+    # Up to 20 s for the first position. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had not
+    # finished and the test quit with "no position".
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
     if n.pos is None:
-        print("  no position")
+        print("  no position after 20 s")
         return 1
     print("  start north %+.2f east %+.2f alt %.2f armed %s"
           % (n.pos[0], n.pos[1], n.pos[2], n.arm))
@@ -189,6 +195,13 @@ def main():
               % (face, gap, CP_DIST, "ok" if ok else "FAIL"))
         if not ok:
             fails += 1
+
+    # Park where it stopped. The east-100 goal would otherwise stay active
+    # after this script exits, and on a slow machine an IMU stall that blanks
+    # the obstacle data for a moment is enough for CP_GO_NO_DATA 1 to let the
+    # aircraft through the wall. Seen once on the clean-clone instance.
+    n.send(n.pos[1], n.pos[0], 7.0, 90.0)
+    spin(n, 2.0)
 
     print()
     print("  ===== %s =====" % ("NO REGRESSION" if fails == 0

@@ -20,6 +20,8 @@ setup(
          + glob('config/*.xml')),
         (os.path.join('share', package_name, 'patches'),
          glob('patches/*.patch')),
+        (os.path.join('share', package_name, 'scripts'),
+         ['scripts/px4_params.sh']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

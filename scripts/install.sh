@@ -280,17 +280,12 @@ cat <<EOF
     source /opt/ros/jazzy/setup.bash
     source $WS/install/setup.bash
 
-    cd ~/PX4-Autopilot
-    PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \
-    PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
-
+    cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
     ros2 launch avoidance_sim sim.launch.py      # brake at walls
     ros2 launch avoidance_sim nav2.launch.py     # or: plan a route round them
 
-  The PX4_PARAM_ variables are PX4 parameters, applied at boot. All four are
-  needed; the README says why. The one that bites a fresh install is
-  NAV_DLL_ACT: the airframe default waits for a ground station and never
-  arms without one.
+  The launch sets the four PX4 parameters the stack needs once PX4 answers
+  (it logs them as [px4_params]); the README says why each is there.
 
   This script did NOT install PX4 $PX4_VERSION. See the README, Install, step 2.
 EOF

@@ -33,13 +33,11 @@ puts them on `PATH` for you.
 
 ```bash
 cd ~/PX4-Autopilot
-PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \
 PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 ```
 
 | Part | What it does |
 |---|---|
-| `PX4_PARAM_<NAME>=<value>` | A PX4 parameter, applied at boot by PX4's SITL startup script. The four here are explained below. Same effect as `param set` at the `pxh>` prompt |
 | `PX4_GZ_WORLD=walls` | Loads the world with the obstacle walls. Omit for an empty one |
 | `HEADLESS=1` | Suppresses the Gazebo GUI. Worth 10 to 45% of real-time factor. The server still renders the depth camera |
 | `gz_x500_depth` | The airframe. Plain `gz_x500` has no camera and will not work |
@@ -62,6 +60,8 @@ RViz-side nodes, and RViz. Arguments:
 | `agent:=false` | true | You already have an agent running. Otherwise the second one collides on UDP 8888 |
 | `agent_cmd:=/path/to/MicroXRCEAgent` | `MicroXRCEAgent` | The agent is not on `PATH` |
 | `world_sdf:=/path/to/world.sdf` | the node default | PX4 lives somewhere other than `~/PX4-Autopilot`, or you want different wall outlines |
+| `px4_bin:=/path/to/build/px4_sitl_default/bin` | `~/PX4-Autopilot/build/px4_sitl_default/bin` | Where `px4-param` is, for setting the parameters below |
+| `px4_params:="CP_DIST=3.0 ..."` | the four below | Change the parameters the launch sets. `px4_params:=""` skips it |
 
 For path planning instead, which includes everything above:
 
@@ -73,16 +73,18 @@ Adds `base:=false` if the base stack is already running.
 
 ### The four parameters
 
-| Parameter | Why it is in the command |
+The launch sets these through PX4's own `px4-param` client as soon as PX4
+answers, and logs each one as `[px4_params]`. Nothing to type.
+
+| Parameter | Why the stack sets it |
 |---|---|
 | `NAV_DLL_ACT=0` | The x500 airframe defaults this to 2: refuse to arm until a ground station connects. There is no ground station here, so without it PX4 repeats `Preflight Fail: No connection to the GCS` and nothing you do in RViz will fly. Found on the first clean-machine install; the development machine had it saved from months before |
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
 | `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are honestly unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
 
-They are in the Terminal 1 command so nothing has to be typed at the `pxh>`
-prompt, and they persist in the PX4 build tree after the first run. To change
-one on a running PX4, type at `pxh>`:
+They persist in the PX4 build tree after the first run. To change one on a
+running PX4, type at `pxh>`:
 
 ```
 param set CP_DIST 3.0
