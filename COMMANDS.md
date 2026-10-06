@@ -33,11 +33,13 @@ puts them on `PATH` for you.
 
 ```bash
 cd ~/PX4-Autopilot
+PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \
 PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 ```
 
 | Part | What it does |
 |---|---|
+| `PX4_PARAM_<NAME>=<value>` | A PX4 parameter, applied at boot by PX4's SITL startup script. The four here are explained below. Same effect as `param set` at the `pxh>` prompt |
 | `PX4_GZ_WORLD=walls` | Loads the world with the obstacle walls. Omit for an empty one |
 | `HEADLESS=1` | Suppresses the Gazebo GUI. Worth 10 to 45% of real-time factor. The server still renders the depth camera |
 | `gz_x500_depth` | The airframe. Plain `gz_x500` has no camera and will not work |
@@ -69,20 +71,24 @@ ros2 launch avoidance_sim nav2.launch.py
 
 Adds `base:=false` if the base stack is already running.
 
-### At the `pxh>` prompt, before flying
+### The four parameters
+
+| Parameter | Why it is in the command |
+|---|---|
+| `NAV_DLL_ACT=0` | The x500 airframe defaults this to 2: refuse to arm until a ground station connects. There is no ground station here, so without it PX4 repeats `Preflight Fail: No connection to the GCS` and nothing you do in RViz will fly. Found on the first clean-machine install; the development machine had it saved from months before |
+| `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
+| `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
+| `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are honestly unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
+
+They are in the Terminal 1 command so nothing has to be typed at the `pxh>`
+prompt, and they persist in the PX4 build tree after the first run. To change
+one on a running PX4, type at `pxh>`:
 
 ```
-param set CP_DIST 2.0
-param set CP_GO_NO_DATA 1
+param set CP_DIST 3.0
 ```
 
-`CP_DIST` is the standoff in metres and **avoidance is off until you set it**
-(`-1` disables it). `CP_GO_NO_DATA 1` matters more than it looks: the camera
-sees 73 degrees, so 57 of the 72 obstacle bins are honestly unknown, and at
-the default of 0 PX4 refuses to accelerate in any direction it cannot see.
-Leave it at 0 and the aircraft will only fly forwards, with no error.
-
-Note these are `param set`, not `px4-param set`. `px4-param` is the external
+Note that is `param set`, not `px4-param set`. `px4-param` is the external
 client and is only reachable from a terminal that has the build `bin` on
 `PATH`.
 

@@ -5,8 +5,15 @@ PX4 source tree, which is a build step as much as a run step, and burying a
 build inside a launch file makes failures hard to read. So this is two
 commands rather than one:
 
-    cd ~/PX4-Autopilot && PX4_GZ_WORLD=walls make px4_sitl gz_x500_depth
+    cd ~/PX4-Autopilot
+    PX4_PARAM_NAV_DLL_ACT=0 PX4_PARAM_NAV_RCL_ACT=0 PX4_PARAM_CP_DIST=2.0 PX4_PARAM_CP_GO_NO_DATA=1 \\
+    PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
     ros2 launch avoidance_sim sim.launch.py
+
+The PX4_PARAM_ variables are PX4 parameters, applied at boot by PX4's SITL
+startup script; the README's Run section says what each is for. NAV_DLL_ACT
+is the one a fresh install cannot do without: the airframe default waits for
+a ground station and never arms, which the first clean-machine test found.
 
 Down from the four terminals in a fixed order that this replaces.
 

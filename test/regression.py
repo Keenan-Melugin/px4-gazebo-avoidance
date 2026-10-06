@@ -126,6 +126,15 @@ def main():
     if n.pos[2] < 4.0:
         n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
         spin(n, 3.0)
+        if n.arm != 2:
+            # Found by the clean-clone test: on a fresh install the x500
+            # airframe's NAV_DLL_ACT default of 2 waits for a ground station.
+            print("  PX4 did not arm (arming_state %s). On a fresh install the usual"
+                  % n.arm)
+            print("  cause is NAV_DLL_ACT at the airframe default of 2, waiting for a")
+            print("  ground station. Start PX4 with PX4_PARAM_NAV_DLL_ACT=0 (README,")
+            print("  Run) and retry.")
+            return 1
         n.send(n.pos[1], n.pos[0], 7.0)
         for _ in range(30):
             spin(n, 1.0)
