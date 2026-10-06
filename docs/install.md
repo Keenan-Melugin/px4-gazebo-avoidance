@@ -37,9 +37,14 @@ shell, and burying that inside another script would hide its failures.
 ## Step 1: ROS 2 Jazzy and Gazebo Harmonic
 
 ```bash
+sudo apt install -y git
 git clone https://github.com/Keenan-Melugin/px4-gazebo-avoidance.git ~/px4-gazebo-avoidance
 ~/px4-gazebo-avoidance/scripts/prereqs.sh
 ```
+
+The first line is there because the Ubuntu Desktop image ships without git,
+found on the first install from that image in a VM; the WSL image has it.
+Nothing else can fetch the repository, so it cannot be in the script.
 
 The script adds the ROS 2 and Gazebo apt repositories and installs
 `ros-jazzy-desktop`, `ros-dev-tools`, `gz-harmonic`, `ros-jazzy-ros-gz` and
