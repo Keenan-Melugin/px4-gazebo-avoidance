@@ -93,8 +93,8 @@ Visualization Manager:
       Class: rviz_default_plugins/Map
       Color Scheme: costmap
       Draw Behind: true
-      Enabled: true
-      Name: local costmap
+      Enabled: false
+      Name: local costmap (off by default, see COMMANDS.md)
       Topic:
         Depth: 1
         Durability Policy: Transient Local

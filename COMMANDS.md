@@ -108,6 +108,24 @@ It also refuses for tens of seconds after boot while the barometer and EKF
 settle, reporting `Resolve system health failures first`. Wait for
 `Ready for takeoff`.
 
+## The costmap display is off by default
+
+The bundled RViz config has a `local costmap` display, and it ships disabled.
+On this machine, enabling it makes RViz log
+
+    rviz/glsl120/indexed_8bit_image.vert
+    active samplers with a different type refer to the same texture image unit
+
+and the first time, that killed RViz outright rather than just failing to
+draw. It is an OGRE shader problem in RViz's Map display, not something this
+package can fix, and it appears to be driver dependent.
+
+Tick it on in the Displays panel if you want the costmap and your driver
+copes. The `scan (what Nav2 sees)` and `Nav2 plan` displays have no such
+problem and are on by default, and between them they show the same story: the
+orange points are what the camera observed, the green line is the route the
+planner chose through it.
+
 ## Switching who does the avoiding
 
 Avoidance belongs to exactly one layer at a time. From the orange ball's menu,
