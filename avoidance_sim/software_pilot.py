@@ -134,7 +134,8 @@ class SoftwarePilot(Node):
     ARRIVED = 0.6      # m
 
     def __init__(self):
-        super().__init__('software_pilot')
+        super().__init__('software_pilot',
+                         start_parameter_services=False)  # see rviz_bridge.py
         self.pub = self.create_publisher(
             ManualControlSetpoint, '/fmu/in/manual_control_input', PX4_QOS)
         self.create_subscription(VehicleLocalPosition,

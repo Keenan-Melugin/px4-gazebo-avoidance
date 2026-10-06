@@ -4,13 +4,35 @@ These are the scripts that produced the numbers in the repository README. They
 are not unit tests: each one needs PX4, Gazebo and the stack running, and each
 flies the aircraft.
 
+## The gate
+
+```bash
+python3 test/gate.py        # about eight minutes; needs nav2.launch.py up
+```
+
+Runs `regression.py` (brake mode) and then `nav2_flight.py` (plan mode) and
+keeps score. Run it after any change to the pilot, the frames, the obstacle
+node or the Nav2 configuration. If a number moves, the change did something
+it was not meant to. Each half also runs on its own.
+
+| Script | What it measures | Mode |
+|---|---|---|
+| `regression.py` | Puts the pilot in brake mode, commands four cardinal headings and reports the settled error, then flies at a known wall and reports the collision-prevention standoff against `CP_DIST`. Exit code counts failures | brake |
+| `nav2_flight.py` | Switches to plan mode, confirms PX4 is in Offboard, sends a Nav2 goal behind the 10 m wall and reports whether the aircraft got past it and how far sideways it went, then switches back | plan |
+
+## The individual measurements
+
 | Script | What it measures |
 |---|---|
-| `yaw_threshold.py` | Sweeps the yaw stick to find the dead band and the stick-to-rate slope. This is where the table in the README comes from. |
-| `yaw_test.py` | Commands four cardinal headings and reports the settled error. Also checks a position-only goal leaves the heading alone. |
-| `hold_test.py` | Separates "does it turn" from "does it stay turned", by holding zero stick and watching for drift. |
-| `avoid_test.py` | Repositions with avoidance off, then flies at a known wall with it on and reports the standoff. |
-| `regression.py` | Heading and avoidance together, to check a refactor changed nothing. |
+| `yaw_threshold.py` | Sweeps the yaw stick to find the dead band and the stick-to-rate slope. The yaw table in the README comes from here |
+| `xy_threshold.py` | The same sweep for the XY stick: where motion starts and how much velocity a unit of stick commands |
+| `yaw_test.py` | Four cardinal headings, settled error. Also checks that a position-only goal leaves the heading alone |
+| `hold_test.py` | Separates "does it turn" from "does it stay turned": holds zero stick and watches for drift |
+| `avoid_test.py` | Repositions with avoidance off, then flies at a known wall with it on and reports the standoff |
+| `velmode_ab.py` | Commanded against achieved speed in velocity mode, with collision prevention on and off. This is the A/B that showed collision prevention and a planner cannot share an axis |
+| `mode_test.py` | The brake/plan toggle in both directions, and that plan mode is not subject to collision prevention |
+| `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding a direction and reading back the velocity PX4 reports. The lateral axis is still unverified, because pure pursuit never commands it |
+| `twist_check.py` | That `/odom` carries its twist in base_link FLU, as nav_msgs requires, rather than in the world frame |
 
 Run them with the stack up and the workspace sourced, for example:
 
@@ -25,5 +47,4 @@ Two things to know before trusting a result:
   the world measures nothing, which is a mistake these scripts have made.
 * **Nothing else should be driving the aircraft.** If someone is clicking in
   RViz while a script runs, the two fight over the same goal topic and the
-  numbers are meaningless. `regression.py` prints whether the RViz marker was
-  touched during the run for this reason.
+  numbers are meaningless.

@@ -296,6 +296,7 @@ def main():
     east_excursion = max(abs(p[0] - START[0]) for p in n.track) if n.track else 0
     print("  furthest sideways excursion from the start line: %.2f m"
           % east_excursion)
+    rc = 1
     if n.plan_n == 0:
         print("  FAIL: the planner never produced a path. If the log says")
         print("        'unknown', the costmap has not seen enough and")
@@ -304,6 +305,7 @@ def main():
         print("  FAIL: paths planned but no cmd_vel, so the controller is not")
         print("        following them.")
     elif crossed:
+        rc = 0
         print("  PASS: got past the wall at north %.1f, which the base "
               "stack cannot do." % WALL_NORTH)
         print("        Sideways excursion %.1f m, so it routed around rather "
@@ -318,7 +320,7 @@ def main():
     spin(n, 3.0)
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return rc
 
 
 if __name__ == '__main__':

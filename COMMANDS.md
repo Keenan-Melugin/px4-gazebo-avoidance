@@ -203,8 +203,9 @@ Each script needs the stack running and flies the aircraft. They are
 measurements, not unit tests.
 
 ```bash
+python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, about 8 min
 python3 test/avoid_test.py       # standoff from a wall. Repositions itself first
-python3 test/regression.py       # heading and avoidance together, after a refactor
+python3 test/regression.py       # brake mode: heading hold and the standoff, exit code counts failures
 python3 test/mode_test.py        # the brake/plan toggle, both directions
 python3 test/yaw_threshold.py    # sweeps the yaw stick to find its dead band
 python3 test/xy_threshold.py     # same for the lateral stick, plus the velocity slope
@@ -217,7 +218,10 @@ Two things to know before trusting any result. **Start position matters**: a
 run that begins outside the test area measures nothing, which these scripts
 have done. And **nothing else should be driving the aircraft**: if someone is
 clicking in RViz while a script runs, the two fight over the same goal topic.
-`regression.py` prints whether the marker was touched for that reason.
+
+Run the gate after any change to the pilot, the frames, the obstacle node or
+the Nav2 configuration. If a number moves, the change did something it was not
+meant to. `test/README.md` has the full table.
 
 ## When it goes wrong
 

@@ -35,7 +35,8 @@ class GoalBridge(Node):
     """
 
     def __init__(self):
-        super().__init__('rviz_goal_bridge')
+        super().__init__('rviz_goal_bridge',
+                         start_parameter_services=False)  # see rviz_bridge.py
         self.home = None
         # /goal_pose is shared with Nav2's navigator: RViz's 2D Goal Pose tool
         # publishes it and both of us hear it. In plan mode Nav2 owns that

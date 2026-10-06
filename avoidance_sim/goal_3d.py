@@ -42,7 +42,8 @@ class Goal3D(Node):
     """
 
     def __init__(self):
-        super().__init__('goal_3d')
+        super().__init__('goal_3d',
+                         start_parameter_services=False)  # see rviz_bridge.py
         self.origin = None
         self.pose = None
         self.cmd = self.create_publisher(

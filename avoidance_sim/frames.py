@@ -11,8 +11,6 @@ upside down in RViz while its heading still reads correctly.
 
 import math
 
-from scipy.spatial.transform import Rotation
-
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 
@@ -32,10 +30,21 @@ MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                       durability=DurabilityPolicy.TRANSIENT_LOCAL,
                       history=HistoryPolicy.KEEP_LAST, depth=1)
 
+# Quaternions are (w, x, y, z) throughout this package, which is PX4's order.
+# ROS messages want x, y, z, w; the one place that writes them reorders.
+#
 # NED -> ENU is a 180 degree turn about (1,1,0)/sqrt(2): x<->y, z flips.
-R_NED_ENU = Rotation.from_quat([1 / math.sqrt(2), 1 / math.sqrt(2), 0.0, 0.0])
 # body FRD -> body FLU is 180 degrees about x.
-R_FRD_FLU = Rotation.from_quat([1.0, 0.0, 0.0, 0.0])
+#
+# These were scipy Rotation objects. At 100 odometry messages a second the
+# from_quat / multiply / as_quat / inv().apply chain was measurable in the
+# bridge process, and it pulled scipy onto every machine, about 100 MB on a
+# Pi, for two constant rotations. The plain products below were checked
+# against scipy on 60 live samples before the switch: quaternions agree to
+# 9e-8 and rotated velocities to 2e-8.
+_S2 = 1.0 / math.sqrt(2.0)
+Q_NED_ENU = (0.0, _S2, _S2, 0.0)
+Q_FRD_FLU = (0.0, 1.0, 0.0, 0.0)
 
 # Camera mount, from Tools/simulation/gz/models/x500_depth/model.sdf:
 #   <pose>.12 .03 .242 0 0 0</pose>, no rotation. Gazebo link axes are FLU,
@@ -57,8 +66,40 @@ def wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
+def qmul(a, b):
+    """Hamilton product of two (w, x, y, z) quaternions. As a rotation it is
+    "b, then a", the same composition order scipy's `a * b` uses."""
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return (aw * bw - ax * bx - ay * by - az * bz,
+            aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw)
+
+
+def ned_to_enu(q_body_ned):
+    """PX4's body->NED attitude (w, x, y, z) as a ROS base_link->odom
+    attitude (w, x, y, z): the NED->ENU turn on the outside, FRD->FLU on the
+    inside. Both are needed; one alone renders the aircraft upside down."""
+    return qmul(qmul(Q_NED_ENU, q_body_ned), Q_FRD_FLU)
+
+
+def rotate_inv(q, v):
+    """Rotate vector v by the inverse of the unit quaternion q (w, x, y, z).
+    With q = body->world this takes a world-frame vector into the body."""
+    w, x, y, z = q[0], -q[1], -q[2], -q[3]   # the inverse of a unit q is its conjugate
+    vx, vy, vz = v
+    tx = 2.0 * (y * vz - z * vy)
+    ty = 2.0 * (z * vx - x * vz)
+    tz = 2.0 * (x * vy - y * vx)
+    return (vx + w * tx + (y * tz - z * ty),
+            vy + w * ty + (z * tx - x * tz),
+            vz + w * tz + (x * ty - y * tx))
+
+
 def yaw_of(q):
-    """ENU yaw from a quaternion. 0 = east, anticlockwise positive."""
+    """ENU yaw from a geometry_msgs quaternion. 0 = east, anticlockwise
+    positive."""
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y),
                       1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 

@@ -36,7 +36,8 @@ class CommandMarker(Node):
     FORCE = 21196.0          # PX4 magic value: override preflight / disarm in air
 
     def __init__(self):
-        super().__init__('px4_command_marker')
+        super().__init__('px4_command_marker',
+                         start_parameter_services=False)  # see rviz_bridge.py
         self.cmd = self.create_publisher(
             VehicleCommand, '/fmu/in/vehicle_command', PX4_QOS)
         self.create_subscription(VehicleCommandAck, '/fmu/out/vehicle_command_ack',

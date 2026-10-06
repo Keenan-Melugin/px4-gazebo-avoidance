@@ -184,14 +184,14 @@ say "Installing dependencies with rosdep"
 # (it is source-only on every architecture) and --ignore-src only skips it
 # once it is physically present. Without this step the build still succeeds,
 # because ament_python never imports anything, and the stack then dies at
-# runtime on a missing scipy or ros_gz_bridge.
+# runtime on a missing numpy or ros_gz_bridge.
 ros_source
 if ! rosdep update --rosdistro jazzy >/dev/null 2>&1; then
   warn "rosdep update failed (offline?). Continuing with the existing cache."
 fi
 rosdep install --from-paths "$WS/src" --ignore-src -y --rosdistro jazzy \
   || fail "rosdep could not install the dependencies. The package needs
-        ros_gz_bridge, rviz2, python3-scipy, sensor_msgs_py, interactive_markers
+        ros_gz_bridge, rviz2, python3-numpy, sensor_msgs_py, interactive_markers
         and tf2_ros_py, plus navigation2, nav2_rviz_plugins and
         pointcloud_to_laserscan for nav2.launch.py."
 ok "dependencies present"

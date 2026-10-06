@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Did splitting the file change how it flies?
+"""The brake-mode half of the regression gate: did a change alter how it flies?
 
-Re-measures the two things that were measured before the split: it holds a
-commanded heading, and collision prevention stops it short of a wall. Picks the
-wall by position rather than assuming one, which is the mistake the first
-version of this test made.
+Two measurements, the same two the README numbers come from: the aircraft
+holds a commanded heading, and collision prevention stops it short of a wall
+at CP_DIST. Run it after any change to the pilot, the frames or the obstacle
+node; if either number moves, the change did something it was not meant to.
+
+It puts the pilot in brake mode first, so it is a valid gate whatever the last
+script left the stack in. The plan-mode half is nav2_flight.py; gate.py runs
+both and keeps score.
+
+Picks the wall by position rather than assuming one, which is the mistake the
+first version of this test made. The exit code is the number of failures.
 """
 import math
 import time
@@ -15,14 +22,21 @@ from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
 from geometry_msgs.msg import PoseStamped
 from px4_msgs.msg import VehicleLocalPosition, VehicleStatus, VehicleCommand
+from std_msgs.msg import String
 
 QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                  durability=DurabilityPolicy.VOLATILE,
                  history=HistoryPolicy.KEEP_LAST, depth=5)
+# Same profile as avoidance_sim/frames.py MODE_QOS. The mode is retained state,
+# and a VOLATILE publisher would not match the pilot's subscriber at all.
+MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                      history=HistoryPolicy.KEEP_LAST, depth=1)
 
 # walls.sdf, as the bridge parses it. East extent of each north-south wall.
 WALL_FACES_EAST = (4.5, 11.5)
 CP_DIST = 2.0
+NAV_POSCTL = 2
 
 
 def wrap(a):
@@ -33,6 +47,7 @@ class R(Node):
     def __init__(self):
         super().__init__('regression')
         self.goal = self.create_publisher(PoseStamped, '/avoidance_sim/pilot_goal', 10)
+        self.mode = self.create_publisher(String, '/avoidance_sim/mode', MODE_QOS)
         self.cmd = self.create_publisher(VehicleCommand,
                                          '/fmu/in/vehicle_command', QOS)
         self.create_subscription(VehicleLocalPosition,
@@ -43,6 +58,7 @@ class R(Node):
         self.pos = None
         self.yaw = 0.0
         self.arm = None
+        self.nav = None
 
     def on_pos(self, m):
         if math.isfinite(m.x):
@@ -51,6 +67,7 @@ class R(Node):
 
     def on_st(self, m):
         self.arm = m.arming_state
+        self.nav = m.nav_state
 
     def send(self, east, north, alt, hdg=None):
         g = PoseStamped()
@@ -86,10 +103,25 @@ def main():
     n = R()
     spin(n, 4.0)
     if n.pos is None:
-        print("  no position"); return 1
+        print("  no position")
+        return 1
     print("  start north %+.2f east %+.2f alt %.2f armed %s"
           % (n.pos[0], n.pos[1], n.pos[2], n.arm))
     fails = 0
+
+    # Brake mode, and wait for PX4 to actually be in Position mode. The pilot
+    # re-requests it every two seconds, so this converges; if it does not,
+    # the test still runs and the numbers will say so.
+    m = String()
+    m.data = 'brake'
+    n.mode.publish(m)
+    for _ in range(30):
+        spin(n, 0.5)
+        if n.nav == NAV_POSCTL:
+            break
+    print("  brake mode: nav_state %s %s"
+          % (n.nav, "(Position)" if n.nav == NAV_POSCTL
+             else "(NOT Position; collision prevention may not apply)"))
 
     if n.pos[2] < 4.0:
         n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
@@ -117,8 +149,21 @@ def main():
     print("    worst heading error: %.1f deg" % worst)
 
     print()
-    print("  TEST 2: avoidance. Fly hard east and see what stops it.")
-    n.send(100.0, north, 7.0)
+    print("  TEST 2: avoidance. Face east, fly hard east, see what stops it.")
+    # Heading matters here and it is not cosmetic. The camera covers 73
+    # degrees ahead and nothing else, and CP_GO_NO_DATA 1 lets PX4 move into
+    # directions it has no data for. TEST 1 leaves the aircraft facing west,
+    # and the first version of this test then flew it east backwards: the
+    # camera never saw the wall, nothing braked, and a 15 m wall at 7 m
+    # altitude is a collision. The estimator diverged and every later
+    # measurement was garbage. So hold east while flying east.
+    n.send(east, north, 7.0, 90.0)
+    for _ in range(20):
+        spin(n, 1.0)
+        if abs(math.degrees(wrap(math.radians(90.0) - n.yaw))) < 10.0:
+            break
+    print("    facing %+.0f deg" % math.degrees(n.yaw))
+    n.send(100.0, north, 7.0, 90.0)
     for i in range(16):
         spin(n, 3.0)
     east_f = n.pos[1]
@@ -141,7 +186,7 @@ def main():
                                 else "%d REGRESSION(S)" % fails))
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return fails
 
 
 if __name__ == '__main__':

@@ -22,7 +22,6 @@
        only works where something else happens to pull tf2_ros_py in. -->
   <depend>tf2_ros_py</depend>
   <depend>python3-numpy</depend>
-  <depend>python3-scipy</depend>
 
   <!-- Needed to run, not to build. The bridge carries the depth cloud and the
        simulation clock out of Gazebo; rviz2 is how the aircraft is flown. -->

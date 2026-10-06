@@ -31,7 +31,8 @@ class WorldMarkers(Node):
     """
 
     def __init__(self):
-        super().__init__('world_markers')
+        super().__init__('world_markers',
+                         start_parameter_services=False)  # see rviz_bridge.py
         default = (f'{os.path.expanduser("~")}/PX4-Autopilot'
                    '/Tools/simulation/gz/worlds/walls.sdf')
         self.declare_parameter('world_sdf', default)

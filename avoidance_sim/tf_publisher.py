@@ -8,13 +8,19 @@ silently. Doing it twice in two nodes would be the worse mistake.
 without it. Note the twist is in the CHILD frame (base_link, FLU), per the
 nav_msgs convention, not in the odom frame like the pose.
 
+Rate. PX4 publishes odometry at about 100 Hz and this node used to forward
+every message. Nothing downstream can use that: RViz draws at 30 frames a
+second, Nav2's controller looks TF up at 10 Hz with a 0.2 s tolerance, and
+the costmaps at 5 Hz. So it publishes at 30 Hz and drops the rest. Measured
+with the live stack, this node alone went from 13.7% to 9.5% of a core, and
+most of what remains is receiving the 100 Hz input, which is PX4's choice
+rather than ours.
+
 Split out of a single-file prototype. The behaviour here is measured, not
 assumed; see the repository README for the numbers and the traps.
 """
 
-
-import numpy as np
-from scipy.spatial.transform import Rotation
+import math
 
 from rclpy.node import Node
 
@@ -24,12 +30,19 @@ from px4_msgs.msg import VehicleOdometry
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from visualization_msgs.msg import Marker
 
-from .frames import CAM_XYZ, PX4_QOS, R_FRD_FLU, R_NED_ENU
+from .frames import CAM_XYZ, PX4_QOS, ned_to_enu, rotate_inv
+
+
+def _finite3(a):
+    return math.isfinite(a[0]) and math.isfinite(a[1]) and math.isfinite(a[2])
 
 
 class TfPublisher(Node):
+    PUBLISH_HZ = 30.0
+
     def __init__(self):
-        super().__init__('px4_tf_publisher')
+        super().__init__('px4_tf_publisher',
+                         start_parameter_services=False)  # see rviz_bridge.py
         self.br = TransformBroadcaster(self)
         self.static = StaticTransformBroadcaster(self)
         self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry',
@@ -37,6 +50,8 @@ class TfPublisher(Node):
         self.marker = self.create_publisher(Marker, '/drone', 10)
         self.odom = self.create_publisher(Odometry, '/odom', 10)
         self.publish_static()
+        self.period = 1.0 / self.PUBLISH_HZ
+        self.next_pub = 0.0
         self.n = 0
         self.vel_frame_seen = None
 
@@ -54,7 +69,7 @@ class TfPublisher(Node):
             f'static base_link -> camera_link at {CAM_XYZ} (no rotation)')
 
     def publish_odom(self, now, x, y, z, q, q_body_ned, m):
-        """nav_msgs/Odometry for Nav2.
+        """nav_msgs/Odometry for Nav2. q is (w, x, y, z), ENU/FLU.
 
         The twist belongs in the child frame (base_link, FLU). PX4 reports
         velocity in whichever frame `velocity_frame` names at runtime, so it
@@ -68,8 +83,8 @@ class TfPublisher(Node):
         o.child_frame_id = 'base_link'
         o.pose.pose.position.x, o.pose.pose.position.y = x, y
         o.pose.pose.position.z = z
-        o.pose.pose.orientation.x, o.pose.pose.orientation.y = float(q[0]), float(q[1])
-        o.pose.pose.orientation.z, o.pose.pose.orientation.w = float(q[2]), float(q[3])
+        o.pose.pose.orientation.w, o.pose.pose.orientation.x = q[0], q[1]
+        o.pose.pose.orientation.y, o.pose.pose.orientation.z = q[2], q[3]
 
         vf = int(m.velocity_frame)
         if vf != self.vel_frame_seen:
@@ -79,37 +94,36 @@ class TfPublisher(Node):
             self.get_logger().info(
                 f'PX4 velocity_frame = {vf} = {name}; converting to base_link FLU')
 
-        if np.isfinite(m.velocity).all():
-            v = np.array([float(m.velocity[0]), float(m.velocity[1]),
-                          float(m.velocity[2])])
+        if _finite3(m.velocity):
+            v = (float(m.velocity[0]), float(m.velocity[1]), float(m.velocity[2]))
             if vf == VehicleOdometry.VELOCITY_FRAME_BODY_FRD:
                 body_frd = v
             else:
                 # World (NED or FRD) -> body FRD, using the body->world rotation.
-                body_frd = q_body_ned.inv().apply(v)
-            o.twist.twist.linear.x = float(body_frd[0])
-            o.twist.twist.linear.y = float(-body_frd[1])   # FRD -> FLU
-            o.twist.twist.linear.z = float(-body_frd[2])
+                body_frd = rotate_inv(q_body_ned, v)
+            o.twist.twist.linear.x = body_frd[0]
+            o.twist.twist.linear.y = -body_frd[1]   # FRD -> FLU
+            o.twist.twist.linear.z = -body_frd[2]
 
         # angular_velocity is documented as always BODY_FRD.
-        if np.isfinite(m.angular_velocity).all():
+        if _finite3(m.angular_velocity):
             o.twist.twist.angular.x = float(m.angular_velocity[0])
             o.twist.twist.angular.y = float(-m.angular_velocity[1])
             o.twist.twist.angular.z = float(-m.angular_velocity[2])
 
         # Diagonal covariance from PX4's variances. Nav2 does not use these
         # heavily, but leaving them zero claims perfect certainty.
-        if np.isfinite(m.position_variance).all():
+        if _finite3(m.position_variance):
             pv = m.position_variance
             o.pose.covariance[0] = float(pv[1])    # x (east) <- PX4 y
             o.pose.covariance[7] = float(pv[0])    # y (north) <- PX4 x
             o.pose.covariance[14] = float(pv[2])
-        if np.isfinite(m.orientation_variance).all():
+        if _finite3(m.orientation_variance):
             ov = m.orientation_variance
             o.pose.covariance[21] = float(ov[0])
             o.pose.covariance[28] = float(ov[1])
             o.pose.covariance[35] = float(ov[2])
-        if np.isfinite(m.velocity_variance).all():
+        if _finite3(m.velocity_variance):
             vv = m.velocity_variance
             o.twist.covariance[0] = float(vv[0])
             o.twist.covariance[7] = float(vv[1])
@@ -118,17 +132,26 @@ class TfPublisher(Node):
         self.odom.publish(o)
 
     def on_odom(self, m):
-        if not np.isfinite(m.position).all() or not np.isfinite(m.q).all():
+        if not _finite3(m.position) or not (_finite3(m.q) and math.isfinite(m.q[3])):
             return
+        # 30 Hz out of a 100 Hz input. Decided on time, not on message count,
+        # so it stays 30 Hz if PX4's rate changes.
+        now_s = self.get_clock().now().nanoseconds * 1e-9
+        if now_s < self.next_pub:
+            return
+        # Schedule the next slot rather than gate on "a period since the last
+        # one": that gate quantises to the input spacing and gave 25 Hz from
+        # a 100 Hz input. This keeps the average exact and never falls behind.
+        self.next_pub = max(self.next_pub + self.period, now_s - self.period)
         now = self.get_clock().now().to_msg()
 
         # position: NED -> ENU
         n, e, d = float(m.position[0]), float(m.position[1]), float(m.position[2])
         x, y, z = e, n, -d
 
-        # attitude: PX4 q is (w,x,y,z) body->NED. scipy wants (x,y,z,w).
-        q_body_ned = Rotation.from_quat([m.q[1], m.q[2], m.q[3], m.q[0]])
-        q = (R_NED_ENU * q_body_ned * R_FRD_FLU).as_quat()   # x,y,z,w
+        # attitude: PX4 q is (w,x,y,z) body->NED; both frame turns applied.
+        q_body_ned = (float(m.q[0]), float(m.q[1]), float(m.q[2]), float(m.q[3]))
+        q = ned_to_enu(q_body_ned)                 # (w, x, y, z)
 
         t = TransformStamped()
         t.header.stamp = now
@@ -137,17 +160,21 @@ class TfPublisher(Node):
         t.transform.translation.x = x
         t.transform.translation.y = y
         t.transform.translation.z = z
-        t.transform.rotation.x, t.transform.rotation.y = float(q[0]), float(q[1])
-        t.transform.rotation.z, t.transform.rotation.w = float(q[2]), float(q[3])
+        t.transform.rotation.w, t.transform.rotation.x = q[0], q[1]
+        t.transform.rotation.y, t.transform.rotation.z = q[2], q[3]
         self.br.sendTransform(t)
 
         self.publish_odom(now, x, y, z, q, q_body_ned, m)
 
-        # The TF above must go out at full rate, but the body marker is static
-        # geometry attached to base_link: republishing it 23 times a second is
-        # pure cost. Every 5th message is 4-5 Hz, which is ample.
-        if self.n % 5 != 0:
-            self.n += 1
+        self.n += 1
+        if self.n == 1:
+            self.get_logger().info('odometry flowing, publishing odom -> base_link at %.0f Hz'
+                                   % self.PUBLISH_HZ)
+
+        # The body marker is static geometry attached to base_link, so
+        # republishing it at the TF rate is pure cost. Every 6th publish is
+        # 5 Hz, which is ample.
+        if self.n % 6 != 1:
             return
         mk = Marker()
         mk.header.frame_id = 'base_link'
@@ -157,7 +184,3 @@ class TfPublisher(Node):
         mk.color.r, mk.color.g, mk.color.b, mk.color.a = 0.1, 0.5, 0.95, 0.9
         mk.pose.orientation.w = 1.0
         self.marker.publish(mk)
-
-        self.n += 1
-        if self.n == 1:
-            self.get_logger().info('odometry flowing, publishing odom -> base_link')

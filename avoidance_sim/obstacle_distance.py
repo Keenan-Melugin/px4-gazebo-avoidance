@@ -11,7 +11,6 @@ Defaults match the simulated OAK-D Lite in PX4 v1.17.0
 (Tools/simulation/gz/models/OakD-Lite/model.sdf):
     horizontal_fov 1.274 rad = 73.0 deg, clip near 0.2 m, far 19.1 m, 30 Hz.
 """
-import math
 
 import numpy as np
 import rclpy
