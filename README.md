@@ -118,6 +118,9 @@ the PX4 root, and it will leave that submodule dirty.
 
 ## Run
 
+Every command in this repository, with what it does and what goes wrong, is in
+[COMMANDS.md](COMMANDS.md). The short version follows.
+
 Two terminals. Source ROS and the workspace in both.
 
 ```bash
