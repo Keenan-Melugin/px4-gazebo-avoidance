@@ -49,7 +49,8 @@ line "agent processes" "$(pgrep -c MicroXRCEAgent 2>/dev/null)"
 if [ -r /opt/ros/jazzy/setup.bash ] && [ -f "$WS/install/setup.bash" ]; then
   set +u; . /opt/ros/jazzy/setup.bash; . "$WS/install/setup.bash"; set -u
   line "fmu topics" "$(timeout 15 ros2 topic list 2>/dev/null | grep -c '^/fmu/out/' || echo 0)"
-  line "nodes" "$(timeout 15 ros2 node list 2>/dev/null | wc -l)"
+  # --no-daemon: a stale daemon answers 0 for a stack that is plainly running
+  line "nodes" "$(timeout 20 ros2 node list --no-daemon 2>/dev/null | wc -l)"
 fi
 if command -v gz >/dev/null && [ "$(pgrep -cf 'gz sim')" != "0" ]; then
   line "real-time factor" "$(timeout 10 gz topic -e -t /world/walls/stats -n 3 2>/dev/null | grep -oE 'real_time_factor: [0-9.]+' | tail -1 | cut -d' ' -f2)"
@@ -59,7 +60,8 @@ if [ -x "$BIN/px4-listener" ] && [ "$(pgrep -cf 'bin/px4')" != "0" ]; then
   line "obstacle_distance" "$(timeout 10 "$BIN/px4-listener" obstacle_distance 1 2>/dev/null | grep -aoE 'timestamp: [0-9]+ \([^)]*\)' | head -1 || echo "not arriving")"
   line "arming / mode" "$(timeout 10 "$BIN/px4-commander" status 2>/dev/null | grep -aiE 'arming|nav state|mode' | head -2 | tr -s ' ' | paste -sd'|')"
   for p in NAV_DLL_ACT NAV_RCL_ACT CP_DIST CP_GO_NO_DATA; do
-    line "param $p" "$(timeout 10 "$BIN/px4-param" show "$p" 2>/dev/null | grep -aoE ': .*' | head -1 | cut -c3-)"
+    # the first output line is a legend; the value is on the line naming the parameter
+    line "param $p" "$(timeout 10 "$BIN/px4-param" show "$p" 2>/dev/null | grep -a "$p" | grep -aoE ': .*' | head -1 | cut -c3-)"
   done
 fi
 echo "== end =="
