@@ -233,6 +233,17 @@ ok "avoidance_sim"
 
 # -------------------------------------------------------------------- renderer
 say "Checking you have hardware OpenGL"
+# On WSL, Mesa picks the llvmpipe software renderer unless GALLIUM_DRIVER=d3d12
+# names the driver that reaches the Windows GPU. The clean-clone test ran this
+# check on a machine with a perfectly good GPU and got "software rendering",
+# which a reader would take for a broken GPU. So on WSL the check uses the
+# driver the README tells WSL users to export, and says so.
+WSL_NOTE=""
+if [ -d /usr/lib/wsl/lib ] && [ -z "${GALLIUM_DRIVER:-}" ]; then
+  export GALLIUM_DRIVER=d3d12
+  WSL_NOTE=". This is WSL: checked with GALLIUM_DRIVER=d3d12, which every
+        shell that starts Gazebo must export, or Gazebo gets llvmpipe instead"
+fi
 if command -v glxinfo >/dev/null; then
   # || true, because glxinfo exits non-zero with no display and pipefail
   # would otherwise abort the script right before the instructions print.
@@ -248,7 +259,7 @@ if command -v glxinfo >/dev/null; then
         Expect a real-time factor near 0.03 instead of 1.0, which is
         unusable rather than slow. Fix this before going further." ;;
     *)
-      ok "hardware renderer: $REND"
+      ok "hardware renderer: $REND$WSL_NOTE"
       # Gazebo's default ogre2 backend asserts OpenGL 3.3. A Raspberry Pi
       # reports a hardware renderer but caps desktop GL at 3.1, so the
       # renderer name alone is not enough.
