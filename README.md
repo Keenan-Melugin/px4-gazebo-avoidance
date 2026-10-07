@@ -63,9 +63,3 @@ and `models/x500_depth_lidar` here adds a 360 degree 2D lidar to it.
 PX4 v1.17.0, px4_msgs release/1.17, ROS 2 Jazzy, Gazebo Harmonic 8.x,
 eProsima Micro XRCE-DDS Agent v2.4.3. The last one is not `micro-ros-agent`,
 which is a different program and will not work.
-
-## License
-
-None yet: all rights reserved until the ownership of placement work is
-settled with the university. The three files derived from PX4 stay under
-PX4's BSD-3-Clause licence; `NOTICE` names them and carries its text.

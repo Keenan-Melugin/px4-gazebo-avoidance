@@ -6,7 +6,7 @@
   <description>Depth-camera obstacle avoidance for PX4 SITL in Gazebo Harmonic, flown from RViz. A ROS 2 node turns the depth cloud into the polar histogram PX4 expects, and a software pilot streams synthetic manual control so the aircraft stays in the one flight mode where PX4 applies collision prevention.</description>
 
   <maintainer email="Keenan-Melugin@users.noreply.github.com">Keenan Melugin</maintainer>
-  <license>All rights reserved</license>
+  <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>px4_msgs</depend>
