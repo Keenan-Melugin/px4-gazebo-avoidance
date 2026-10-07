@@ -27,11 +27,7 @@ A set of libraries and tools for writing robot software as
 many small programs, called nodes, that exchange typed messages over named
 topics without knowing about each other. A node publishes to a topic;
 any number of nodes subscribe to it. Underneath, DDS (Fast DDS by default
-on Jazzy) carries the messages and discovers who is on the network. Three
-other patterns ride on the same transport: services (one request, one
-reply), actions (a long task with feedback and a result, like "navigate to
-this pose") and parameters (named values a node reads at start and can
-expose for change). A launch file starts a set of nodes with their
+on Jazzy) carries the messages and discovers who is on the network. Three other patterns ride on the same transport. Services are one request and one reply. Actions are a long task with feedback and a result, like "navigate to this pose". Parameters are named values a node reads at start and can expose for change. A launch file starts a set of nodes with their
 parameters in one command. TF is the library that keeps the tree of
 coordinate frames (where the camera is relative to the body, where the body
 is in the world) so any node can ask "where is X in frame Y right now".
@@ -43,11 +39,7 @@ everything at its own pace.
 
 ### What it does here
 
-Everything on the ROS side of this repo is a node:
-the obstacle node (one subscriber, one publisher, ten lines of maths in
-the middle), the software pilot (a timer that publishes sticks at 50 Hz),
-the six small nodes behind RViz's menus and markers, the TF publisher, and
-Nav2's servers. `sim.launch.py` starts them with `use_sim_time` so they
+Everything on the ROS side of this repo is a node. The obstacle node is one subscriber, one publisher and ten lines of maths in the middle. The software pilot is a timer that publishes sticks at 50 Hz. Then the six small nodes behind RViz's menus and markers, the TF publisher, and Nav2's servers. `sim.launch.py` starts them with `use_sim_time` so they
 follow Gazebo's clock. The PX4 topics are all under `/fmu/out/` and
 `/fmu/in/`, and they use the sensor-data QoS profile, which is why every
 subscriber to them in this repo is best-effort.
@@ -56,10 +48,7 @@ subscriber to them in this repo is best-effort.
 
 Nowhere, by default. A topic is a live
 stream; when nobody records it, it is gone. That is deliberate: a robot's
-nodes should not fill a disk. When you want a record, rosbag2 subscribes to
-the topics you name and writes every message with its timestamp to a bag
-(an `.mcap` file on Jazzy), which `ros2 bag play` can publish again later,
-at the original timing, to nodes that never know the difference. That is
+nodes should not fill a disk. When you want a record, rosbag2 subscribes to the topics you name and writes every message with its timestamp to a bag, an `.mcap` file on Jazzy. `ros2 bag play` publishes it again later, at the original timing, to nodes that never know the difference. That is
 how a recorded point cloud becomes a test fixture for the obstacle node
 with no simulator running ([data.md](data.md)). The repo's `scripts/record.sh`
 chooses the topics worth keeping; the depth cloud is left out unless asked
@@ -126,11 +115,7 @@ the clock cross into ROS through `ros_gz_bridge`. The lidar on
 
 ### Where its data goes, and why
 
-Gazebo keeps no record of a run. Its
-state exists only while it runs, and that is by design: the simulation's
-"data in" is the world file, the model file and the spawn pose, all of
-which are text under version control, so a run is reproducible from the
-files rather than from a recording. Anything you want kept crosses into
+Gazebo keeps no record of a run. Its state exists only while it runs, and that is by design. The simulation's "data in" is the world file, the model file and the spawn pose, all text under version control, so a run is reproducible from the files rather than from a recording. Anything you want kept crosses into
 ROS and goes in a bag, or into PX4 and goes in its log. The exception is
 the camera's own point of view: `gz sim -g` attaches a window to a running
 server to look, and PX4 can also stream the colour camera through the
@@ -177,11 +162,7 @@ Offboard mode (plan mode), where collision prevention does not apply.
 
 ### Where its data goes, and why
 
-PX4 writes a ULog file on its own, from
-boot until disarm in simulation, exactly as it would on the aircraft:
-positions, attitude, sensor data, the histogram it received and the fused
-one, the velocity limits it derived, the sticks, every parameter, and its
-own messages. The purpose on an aircraft is forensics and tuning after a
+PX4 writes a ULog file on its own, from boot until disarm in simulation, exactly as it would on the aircraft. In it: positions, attitude, sensor data, the histogram it received and the fused one, the velocity limits it derived, the sticks, every parameter, and its own messages. The purpose on an aircraft is forensics and tuning after a
 flight; the purpose here is the same, plus provenance: a number in the
 README can be traced to a log with the parameters it flew under. The trap is
 size, 6 GB for a long armed session, because logging stops only at disarm.
@@ -209,11 +190,7 @@ in [extend.md](extend.md).
 
 ### What it is
 
-PX4's uORB and ROS 2's DDS are different buses. PX4 runs a
-small client (uXRCE-DDS) that serialises chosen uORB topics and sends them
-over UDP or a serial link to an agent process, which is a full DDS
-participant and republishes them as ROS 2 topics; the reverse direction
-works the same. `px4_msgs` is the ROS 2 package of message definitions
+PX4's uORB and ROS 2's DDS are different buses. PX4 runs a small client (uXRCE-DDS) that serialises chosen uORB topics and sends them over UDP or a serial link to an agent process. The agent is a full DDS participant and republishes them as ROS 2 topics; the reverse direction works the same. `px4_msgs` is the ROS 2 package of message definitions
 generated from PX4's `.msg` files, built against the matching PX4 branch so
 the two sides agree on every field. Since PX4 v1.16 the messages carry a
 version, and a versioned topic's name ends in `_v1`.
@@ -245,11 +222,7 @@ saves which displays are open and how they look.
 
 ### What it does here
 
-It is the cockpit. The depth cloud, the wall
-outlines, the aircraft marker, the scan when the lidar is on, Nav2's path
-and costmaps, and two interactive markers: the green goal ball with its
-menu (brake or plan mode, fly here) and the orange command ball (arm, take
-off, land). `config/avoidance.rviz` is the layout. RViz keeps no data; it
+It is the cockpit. The depth cloud, the wall outlines, the aircraft marker, the scan when the lidar is on, and Nav2's path and costmaps. Two interactive markers: the green goal ball with its menu (brake or plan mode, fly here) and the orange command ball (arm, take off, land). `config/avoidance.rviz` is the layout. RViz keeps no data; it
 is a window.
 
 ### Learn it here
@@ -262,22 +235,14 @@ for interactive markers, `world_markers.py` for drawing geometry.
 
 ### What it is
 
-The ROS 2 navigation stack: a planner server that computes a
-path through a costmap, a controller server that follows it with velocity
-commands, costmaps (a global one for planning, a local rolling one for
-following) built from sensor observations with an inflation layer around
-obstacles, a behaviour tree that sequences planning, following and
-recovery, and lifecycle management that brings the servers up in order.
+The ROS 2 navigation stack. A planner server computes a path through a costmap. A controller server follows it with velocity commands. The costmaps, a global one for planning and a local rolling one for following, are built from sensor observations with an inflation layer around obstacles. A behaviour tree sequences planning, following and recovery, and lifecycle management brings the servers up in order.
 It is two-dimensional and built for ground robots; it assumes a localised
 robot and a map, neither of which an aircraft with a forward camera has by
 default.
 
 ### What it does here
 
-Plan mode. The depth cloud is flattened into a 2D
-scan, the costmaps mark what the camera has seen, the planner finds a
-route round the wall, and pure pursuit turns it into `/cmd_vel`, which the
-pilot converts into PX4 velocity setpoints in Offboard mode. The
+Plan mode. The depth cloud is flattened into a 2D scan, the costmaps mark what the camera has seen, and the planner finds a route round the wall. Pure pursuit turns it into `/cmd_vel`, which the pilot converts into PX4 velocity setpoints in Offboard mode. The
 configuration in `config/nav2.yaml` is unusual on purpose (no map, `odom`
 as the global frame, a global costmap that never clears), and every
 non-default value carries the measurement that set it. The behaviour tree
@@ -298,10 +263,7 @@ are the things the tutorials do not say.
 
 ## The pieces this repo adds
 
-**The software pilot** (`avoidance_sim/software_pilot.py`) is the thing
-that lets PX4's own collision prevention be used at all: it flies the
-aircraft to a goal by publishing synthetic stick positions, which keeps PX4
-in Position mode, the one mode where that feature runs. Its gains and dead
+**The software pilot** (`avoidance_sim/software_pilot.py`) is the thing that lets PX4's own collision prevention be used at all. It flies the aircraft to a goal by publishing synthetic stick positions, which keeps PX4 in Position mode, the one mode where that feature runs. Its gains and dead
 bands were measured, and the scripts that measured them are in `test/`.
 
 **The obstacle node** (`avoidance_sim/obstacle_distance.py`) turns any
