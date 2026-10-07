@@ -87,9 +87,9 @@ of the working area, long enough to be found from anywhere the plan half
 parks the aircraft; that is why `wall_east` is 26 m. If there is none the
 test says so and does not fly. It backs off to 8 m from the face for a
 run-up, pushes, and reads the closest approach, stopping the push once the
-aircraft has stood still for 4 s, because pushed on after braking the
-aircraft creeps along the face toward free space, 3 m in 14 s measured. It
-also moves at least 4 m inside that wall's span first, because near a wall's
+aircraft has stood still for 4 s. Pushed on after braking, the aircraft
+creeps along the face toward free space, 3 m in 14 s measured, which is why
+the end of a fixed push is the wrong thing to read. It also moves at least 4 m inside that wall's span first, because near a wall's
 end collision prevention does something else that is also correct. `CP_GUIDE_ANG` (30 degrees) steers the setpoint
 toward free space, and the aircraft slides round the end instead of
 stopping. Measured once, from 0.5 m inside the walls world's box1 end: it
