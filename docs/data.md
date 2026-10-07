@@ -4,7 +4,8 @@ What a run writes on its own, and what you can record on request. How to
 look while it flies, and how to drive the aircraft from a script or the
 shell. How to configure the stack without editing it, and how to change the
 world it flies in. Every command here was run on the development machine on
-2026-10-07; the two marked untested were not.
+2026-10-07; the two marked untested were not. If ROS 2, PX4, Nav2 or ULog
+are new names, [pieces.md](pieces.md) says what each is first.
 
 ## What a run writes on its own: PX4's flight log
 

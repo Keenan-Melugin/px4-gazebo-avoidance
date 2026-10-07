@@ -36,6 +36,7 @@ worlds/                 extra worlds: pillars, and the template for the next one
 models/                 extra aircraft: x500_depth_lidar, plus a PX4 airframe-file template and the README that orders the steps
 test/                   the measurement scripts, the gate, histogram_selftest.py (no simulator) and template_measure.py (copy it)
 docs/data.md            flight logs, bags, replay, the input topics, configuration without editing, the conditions of a run
+docs/pieces.md          what ROS 2, Gazebo, PX4, the bridge, RViz and Nav2 each are and do here, with a ROS 2 learning path through this code
 ```
 
 ## The build loop

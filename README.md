@@ -16,6 +16,7 @@ switch avoidance off and it hits the wall.
 | You want to | Read |
 |---|---|
 | Install it, from an empty Ubuntu 24.04 to a flying aircraft | [docs/install.md](docs/install.md) |
+| Learn what each piece is: ROS 2, Gazebo, PX4, the bridge, RViz, Nav2, and where their data goes | [docs/pieces.md](docs/pieces.md) |
 | Fly it from RViz, in brake mode and in plan mode | [docs/fly.md](docs/fly.md) |
 | Understand how the pieces talk, and where they bite | [docs/how-it-works.md](docs/how-it-works.md) |
 | Change it, and prove the change did what you meant | [docs/change-it.md](docs/change-it.md) |
