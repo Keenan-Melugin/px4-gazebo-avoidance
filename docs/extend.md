@@ -85,9 +85,12 @@ Its brake half flies east from wherever the aircraft is and looks for the
 first box face on that line, at that altitude. So a world needs a wall east
 of the working area, long enough to be found from anywhere the plan half
 parks the aircraft; that is why `wall_east` is 26 m. If there is none the
-test says so and does not fly. It also moves at least 4 m inside that wall's
-span first, because near a wall's end collision prevention does something
-else that is also correct. `CP_GUIDE_ANG` (30 degrees) steers the setpoint
+test says so and does not fly. It backs off to 8 m from the face for a
+run-up, pushes, and reads the closest approach, stopping the push once the
+aircraft has stood still for 4 s, because pushed on after braking the
+aircraft creeps along the face toward free space, 3 m in 14 s measured. It
+also moves at least 4 m inside that wall's span first, because near a wall's
+end collision prevention does something else that is also correct. `CP_GUIDE_ANG` (30 degrees) steers the setpoint
 toward free space, and the aircraft slides round the end instead of
 stopping. Measured once, from 0.5 m inside the walls world's box1 end: it
 went round that wall and the next and reached east 100 with nothing left to
@@ -163,8 +166,11 @@ its own parameters:
 With `sources` empty the node is the
 single camera it always was, and a source named `camera` takes the legacy
 parameters as defaults, so a second sensor is described alone. The launch's
-`lidar:=true` is exactly that: `sources: "camera lidar"` plus five `lidar.*`
-values, in `LIDAR_SOURCE` in `sim.launch.py`.
+`lidar:=true` is exactly that: `config/sensors_lidar.yaml`, a standard ROS
+parameter file with `sources: "camera lidar"` and five `lidar` values.
+`sensors:=/path/to/yours.yaml` loads any other set, with
+`config/sensors_example.yaml` as the template, and `bridge_extra:=` bridges
+the Gazebo topics it needs ([data.md](data.md) has the full input list).
 
 ```bash
 python3 test/histogram_selftest.py     # 25 checks, bin by bin, in two seconds
@@ -198,9 +204,9 @@ environment, which its startup script applies before the airframe file.
 The lidar sits 0.10 m behind and 0.30 m above `base_link`, above the camera
 housing and the rotors, with a 0.3 m minimum range that excludes the arms:
 360 rays at one degree, 30 m, 10 Hz. The same three numbers appear in
-`LIDAR_SOURCE` (as the FRD mount), in `frames.py` as `LIDAR_XYZ` for the
-static transform RViz needs to place the scan, and in the model file. Change
-one, change all three.
+`config/sensors_lidar.yaml` (as the FRD mount), in `frames.py` as `LIDAR_XYZ`
+for the static transform RViz needs to place the scan, and in the model file.
+Change one, change all three.
 
 ### Fly it with the lidar
 
@@ -254,9 +260,10 @@ stick stream 50.5 Hz.
 
 Same mechanism, no new message type: include `model://OakD-Lite` a second
 time in a model, with a `<topic>` of its own and a pose facing backwards,
-bridge that topic, and describe it as `rear.type: cloud`,
-`rear.yaw_deg: 180`, `rear.mount_xyz_frd` from its pose. The self-test's
-third section is that sensor.
+bridge that topic with `bridge_extra:=`, and describe it in a sensors file
+as `config/sensors_example.yaml` does (`rear`, a cloud, yaw 180, the mount
+from its pose). The self-test's third section is that sensor, and
+`models/README.md` orders the steps.
 
 ### Nav2 and the lidar
 
@@ -295,7 +302,9 @@ them.
 
 ### The PX4 side
 
-A model is a directory under `models/`, linked in as above. If the vehicle
+A model is a directory under `models/`, linked in as above;
+`models/README.md` orders the steps and `models/airframe_template/` holds a
+commented PX4 airframe file. If the vehicle
 is still a quadrotor with different sensors, start it with
 `PX4_SYS_AUTOSTART=4002` as in section 2 and no airframe file. If the vehicle
 is different, it needs its own airframe file in PX4's tree:

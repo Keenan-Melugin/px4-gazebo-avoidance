@@ -17,7 +17,12 @@ targets only exist for models with an airframe file in PX4's tree:
         PX4_GZ_WORLD=walls HEADLESS=1 ./build/px4_sitl_default/bin/px4
     ros2 launch avoidance_sim sim.launch.py lidar:=true
 
-docs/extend.md has both recipes in full.
+Sensors are described to the obstacle node by a ROS parameter file, not by
+editing this launch: lidar:=true loads config/sensors_lidar.yaml, and
+sensors:=/path/to/yours.yaml loads any other (config/sensors_example.yaml is
+the template). A sensor on a new Gazebo topic also needs that topic bridged,
+which is bridge_extra:="/topic@ros_type[gz_type ..." in the same syntax as
+BRIDGE_TOPICS below. docs/extend.md has the recipes, docs/data.md the inputs.
 
 This launch also sets the four PX4 parameters the stack needs, through PX4's
 own px4-param client, as soon as PX4 answers (px4_params to change them,
@@ -38,8 +43,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
-from launch.conditions import IfCondition, UnlessCondition
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -48,18 +53,36 @@ BRIDGE_TOPICS = [
     '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
     '/depth_camera/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
 ]
-# The 2D lidar on models/x500_depth_lidar, bridged only with lidar:=true.
+# The 2D lidar on models/x500_depth_lidar, bridged with lidar:=true.
 LIDAR_BRIDGE = '/lidar@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
-# How that lidar is described to the obstacle node: a scan, on the tail,
-# 0.30 m up (model.sdf pose, FLU -> FRD), 0.3 to 30 m.
-LIDAR_SOURCE = {
-    'sources': 'camera lidar',
-    'lidar.type': 'scan',
-    'lidar.topic': '/lidar',
-    'lidar.mount_xyz_frd': [-0.10, 0.0, -0.30],
-    'lidar.min_distance_cm': 30,
-    'lidar.max_distance_cm': 3000,
-}
+
+
+def sensor_nodes(context, share, sim_time):
+    """The Gazebo bridge and the obstacle node, shaped by the sensor arguments.
+
+    An OpaqueFunction because a launch argument cannot grow a list: the extra
+    bridge topics and the parameter file are only known once the arguments
+    are resolved. Everything else in this launch is static.
+    """
+    lidar = LaunchConfiguration('lidar').perform(context).strip().lower() in ('true', '1', 'yes')
+    sensors = LaunchConfiguration('sensors').perform(context).strip()
+    extra = LaunchConfiguration('bridge_extra').perform(context).split()
+    if lidar:
+        sensors = sensors or os.path.join(share, 'config', 'sensors_lidar.yaml')
+        if LIDAR_BRIDGE not in extra:
+            extra.append(LIDAR_BRIDGE)
+    params = list(sim_time)
+    if sensors:
+        params.append(os.path.expanduser(sensors))
+    return [
+        Node(
+            package='ros_gz_bridge', executable='parameter_bridge',
+            name='gz_bridge', arguments=BRIDGE_TOPICS + extra,
+            parameters=sim_time, output='screen'),
+        Node(
+            package='avoidance_sim', executable='obstacle_distance',
+            parameters=params, output='screen'),
+    ]
 
 
 def generate_launch_description():
@@ -67,7 +90,6 @@ def generate_launch_description():
     rviz_config = os.path.join(share, 'config', 'avoidance.rviz')
 
     use_rviz = LaunchConfiguration('rviz')
-    use_lidar = LaunchConfiguration('lidar')
     use_agent = LaunchConfiguration('agent')
     agent_cmd = LaunchConfiguration('agent_cmd')
     sim_time = [{'use_sim_time': True}]
@@ -104,7 +126,19 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'lidar', default_value='false',
             description='The aircraft is models/x500_depth_lidar: bridge its '
-                        '/lidar scan and merge it into the histogram.'),
+                        '/lidar scan and merge it into the histogram '
+                        '(config/sensors_lidar.yaml).'),
+        DeclareLaunchArgument(
+            'sensors', default_value='',
+            description='A ROS parameter file describing the obstacle node\'s '
+                        'sensors. config/sensors_example.yaml is the template. '
+                        'Empty means the stock camera, or the lidar file with '
+                        'lidar:=true.'),
+        DeclareLaunchArgument(
+            'bridge_extra', default_value='',
+            description='Extra Gazebo-to-ROS bridge specs, space-separated, '
+                        'for the topics a sensors file needs: '
+                        '"/rear/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked".'),
 
         # PX4 talks to ROS 2 through this. Without it nothing below receives
         # anything and the stack looks dead with no diagnosable cause.
@@ -121,28 +155,9 @@ def generate_launch_description():
                  LaunchConfiguration('px4_bin'), LaunchConfiguration('px4_params')],
             output='screen'),
 
-        # Two bridges and two obstacle nodes, one pair per lidar:= value.
-        # A launch argument cannot grow a list, so the lidar variants are
-        # written out; exactly one of each pair starts.
-        Node(
-            condition=UnlessCondition(use_lidar),
-            package='ros_gz_bridge', executable='parameter_bridge',
-            name='gz_bridge', arguments=BRIDGE_TOPICS,
-            parameters=sim_time, output='screen'),
-        Node(
-            condition=IfCondition(use_lidar),
-            package='ros_gz_bridge', executable='parameter_bridge',
-            name='gz_bridge', arguments=BRIDGE_TOPICS + [LIDAR_BRIDGE],
-            parameters=sim_time, output='screen'),
-
-        Node(
-            condition=UnlessCondition(use_lidar),
-            package='avoidance_sim', executable='obstacle_distance',
-            parameters=sim_time, output='screen'),
-        Node(
-            condition=IfCondition(use_lidar),
-            package='avoidance_sim', executable='obstacle_distance',
-            parameters=sim_time + [LIDAR_SOURCE], output='screen'),
+        # The bridge and the obstacle node, shaped by lidar:=, sensors:= and
+        # bridge_extra:= (see sensor_nodes above).
+        OpaqueFunction(function=sensor_nodes, args=[share, sim_time]),
 
         # No name= here, deliberately. This executable hosts six nodes in one
         # process, and name= becomes a __node remap that renames all of them

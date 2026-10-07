@@ -21,7 +21,7 @@ setup(
         (os.path.join('share', package_name, 'patches'),
          glob('patches/*.patch')),
         (os.path.join('share', package_name, 'scripts'),
-         ['scripts/px4_params.sh', 'scripts/link_assets.sh']),
+         ['scripts/px4_params.sh', 'scripts/link_assets.sh', 'scripts/record.sh']),
         (os.path.join('share', package_name, 'worlds'),
          glob('worlds/*.sdf')),
         (os.path.join('share', package_name, 'models', 'x500_depth_lidar'),

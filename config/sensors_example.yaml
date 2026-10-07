@@ -1,0 +1,57 @@
+# A template for describing sensors to the obstacle node. Copy it, keep the
+# sources you have, delete the rest, and pass it to the launch:
+#
+#   ros2 launch avoidance_sim sim.launch.py sensors:=/path/to/yours.yaml \
+#       bridge_extra:="/rear/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked"
+#
+# `sources` lists the names; each name is a nested map below, which ROS turns
+# into dotted parameter names (rear.type). Every key has a default
+# (obstacle_distance.py, Source), so only what differs from it is needed.
+# A source named `camera` starts from the stock OakD-Lite values.
+#
+# Frames and signs, because they are the part that fails silently:
+#   mount_xyz_frd  the sensor's position in body FRD (x forward, y right, z down),
+#                  metres. Gazebo poses are FLU: flip the sign of y and z.
+#   yaw_deg        the sensor's forward relative to body forward, clockwise
+#                  positive, the same sense as the histogram's bearings.
+#   frame          a cloud's axis convention: `flu` is what Gazebo publishes,
+#                  `optical` (x right, y down, z forward) is what real ROS
+#                  camera drivers publish. The node logs the cloud's extents on
+#                  the first message so the guess can be checked.
+#   hfov_deg       a cloud's horizontal field of view; a scan carries its own.
+#
+# Check the result without a simulator: test/histogram_selftest.py shows the
+# calls; python3 -c "..." with a synthetic cloud is five lines. Then the gate.
+obstacle_distance_publisher:
+  ros__parameters:
+    sources: "camera rear side"
+
+    # The stock forward depth camera. Listed so the node keeps it; nothing
+    # to override here. Its defaults: /depth_camera/points, flu, 73 deg,
+    # mount (0.12, -0.03, -0.242), 0.2 to 19.1 m.
+    camera:
+      type: cloud
+
+    # A second OakD-Lite facing backwards. In the model file: a second
+    # <include> of model://OakD-Lite with <topic>rear</topic> and a pose of
+    # (-0.12, 0, 0.242, 0, 0, 3.14159); bridge /rear/points (bridge_extra).
+    rear:
+      type: cloud
+      topic: /rear/points
+      frame: flu
+      hfov_deg: 73.0
+      yaw_deg: 180.0
+      mount_xyz_frd: [-0.12, 0.0, -0.242]
+      min_distance_cm: 20
+      max_distance_cm: 1910
+
+    # A 270 degree scanner on the right side, like PX4's lidar_2d_v2 but on
+    # its own link and topic so PX4's bridge does not also publish from it
+    # (docs/extend.md, section 2).
+    side:
+      type: scan
+      topic: /side
+      yaw_deg: 90.0
+      mount_xyz_frd: [0.0, 0.10, -0.30]
+      min_distance_cm: 30
+      max_distance_cm: 3000

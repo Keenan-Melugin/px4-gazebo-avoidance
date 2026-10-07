@@ -17,7 +17,7 @@ it was not meant to. Each half also runs on its own.
 
 | Script | What it measures | Mode |
 |---|---|---|
-| `regression.py` | Puts the pilot in brake mode, commands four cardinal headings and reports the settled error, then flies at a known wall and reports the collision-prevention standoff against `CP_DIST`. Exit code counts failures | brake |
+| `regression.py` | Puts the pilot in brake mode, commands four cardinal headings and reports the settled error, then backs off 8 m from a wall read from the world file, flies at it and reports the closest approach against `CP_DIST`, stopping once the aircraft stands still. Exit code counts failures | brake |
 | `nav2_flight.py` | Switches to plan mode, confirms PX4 is in Offboard, sends a Nav2 goal behind the 10 m wall and reports whether the aircraft got past it and how far sideways it went, then switches back | plan |
 
 ## The individual measurements
@@ -33,6 +33,7 @@ it was not meant to. Each half also runs on its own.
 | `mode_test.py` | The brake/plan toggle in both directions, and that plan mode is not subject to collision prevention |
 | `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding a direction and reading back the velocity PX4 reports. The lateral axis is still unverified, because pure pursuit never commands it |
 | `twist_check.py` | That `/odom` carries its twist in base_link FLU, as nav_msgs requires, rather than in the world frame |
+| `template_measure.py` | Not a measurement: the skeleton to copy for a new one, with the five-step shape every script here follows. Its placeholder measures drift when the aircraft is left alone |
 | `histogram_selftest.py` | The obstacle node against made-up clouds and scans, bin by bin: the single camera as measured, two sensors merged, stale and dead sensors, a yawed sensor. The only script here that needs no simulator; two seconds |
 
 Run them with the stack up and the workspace sourced, for example:

@@ -18,20 +18,24 @@ avoidance_sim/
   goal_bridge.py        RViz's flat 2D Goal Pose -> PX4 reposition (brake mode only)
   tf_publisher.py       PX4 odometry -> TF and /odom at 30 Hz
   rviz_bridge.py        the process that hosts the six nodes above, and its executor
-launch/sim.launch.py    the base stack. Arguments: rviz, agent, agent_cmd, world, world_sdf, lidar, px4_bin, px4_params
+launch/sim.launch.py    the base stack. Arguments: rviz, agent, agent_cmd, world, world_sdf, lidar, sensors, bridge_extra, px4_bin, px4_params
 launch/nav2.launch.py   the base stack plus Nav2 and pointcloud_to_laserscan
 config/nav2.yaml        costmaps, planner, controller, tree. Every non-default is commented with its measurement
 config/avoidance_bt.xml the behaviour tree Nav2 runs
 config/avoidance.rviz   the RViz layout
+config/sensors_lidar.yaml    the lidar described to the obstacle node; what lidar:=true loads
+config/sensors_example.yaml  the template for describing any sensor set (sensors:=)
 scripts/px4_params.sh   the PX4 parameters the launch sets
 scripts/report.sh       what this machine is and what state the stack is in, for problem reports
+scripts/record.sh       a rosbag2 of a run's light topics, the cloud and the lidar on request
 scripts/prereqs.sh      ROS 2, Gazebo and build tools
 scripts/install.sh      agent, px4_msgs, this package, Nav2, and the link step below
 scripts/link_assets.sh  symlinks worlds/ and models/ into PX4's Gazebo tree, where PX4 insists they live
 patches/                the depth camera resolution change
-worlds/                 extra worlds: pillars, and the template for the next one
-models/                 extra aircraft: x500_depth_lidar, the stock aircraft plus a 2D lidar
-test/                   the measurement scripts, the gate, and histogram_selftest.py (no simulator needed)
+worlds/                 extra worlds: pillars, and the template for the next one; its README is the checklist
+models/                 extra aircraft: x500_depth_lidar, plus a PX4 airframe-file template and the README that orders the steps
+test/                   the measurement scripts, the gate, histogram_selftest.py (no simulator) and template_measure.py (copy it)
+docs/data.md            flight logs, bags, replay, the input topics, configuration without editing, the conditions of a run
 ```
 
 ## The build loop

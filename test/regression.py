@@ -7,7 +7,8 @@ at CP_DIST. Run it after any change to the pilot, the frames or the obstacle
 node; if either number moves, the change did something it was not meant to.
 
 It puts the pilot in brake mode first, so it is a valid gate whatever the last
-script left the stack in. The plan-mode half is nav2_flight.py; gate.py runs
+script left the stack in. Its node class R is the one to reuse for a new
+measurement; template_measure.py shows how. The plan-mode half is nav2_flight.py; gate.py runs
 both and keeps score.
 
 Picks the wall by position rather than assuming one, which is the mistake the
@@ -243,25 +244,59 @@ def main():
         print("    (move the aircraft onto a line with a wall ahead and rerun)")
         fails += 1
     else:
-        print("    wall ahead: %s, face at east %+.1f" % (pre[0][1].name, pre[0][0]))
-        n.send(100.0, north, 7.0, 90.0)
-        for i in range(16):
+        face, box = pre[0]
+        print("    wall ahead: %s, face at east %+.1f" % (box.name, face))
+        # A run-up: a previous test may have parked the aircraft at the
+        # standoff already, and from 2 m away it cannot move toward the
+        # wall at all. Back off to 8 m from the face first; west is free.
+        if face - n.pos[1] < 6.0:
+            print("    only %.1f m from the face; backing off to 8 m for a run-up"
+                  % (face - n.pos[1]))
+            n.send(face - 8.0, north, 7.0, 90.0)
+            for _ in range(40):
+                spin(n, 1.0)
+                if abs(n.pos[1] - (face - 8.0)) < 1.0:
+                    break
             spin(n, 3.0)
-        east_f, north_f, alt_f = n.pos[1], n.pos[0], n.pos[2]
-        ahead = world_geometry.faces_ahead(boxes, east_f, north_f, alt_f, 'east',
-                                           margin=0.5)
-        print("    settled at east %+.2f north %+.2f" % (east_f, north_f))
-        if not ahead:
-            print("    went round the end of the wall (CP_GUIDE_ANG steers toward "
-                  "free space), cannot judge a standoff   FAIL")
+            east, north = n.pos[1], n.pos[0]
+            print("    now east %+.2f north %+.2f" % (east, north))
+        # Push east and watch, rather than push for a fixed 48 s and read
+        # the end position. Collision prevention brakes at CP_DIST, which
+        # is the number this test is for; but while the stick keeps
+        # pushing, CP_GUIDE_ANG (30 deg) also slides the aircraft along the
+        # face toward free space, metres per 10 s, and given long enough it
+        # finds a gap or an end and the end position says nothing about
+        # braking. Measured from PX4's log: braked at 2.0 m, then crept
+        # 4.6 m north into the gap between box1 and box2 and round box1.
+        # So: the closest approach to the face, and stop pushing once it
+        # has moved and then stood still for 4 s.
+        n.send(100.0, north, 7.0, 90.0)
+        gap_min, east_prev, still, moved, t_used = 1e9, n.pos[1], 0, False, 0.0
+        for i in range(96):
+            spin(n, 0.5)
+            t_used += 0.5
+            east_now = n.pos[1]
+            gap_min = min(gap_min, face - east_now)
+            if east_now - east_prev > 0.5:
+                moved = True
+            still = still + 1 if abs(east_now - east_prev) < 0.08 else 0
+            east_prev = east_now
+            if moved and still >= 8:
+                break
+        east_f, north_f = n.pos[1], n.pos[0]
+        print("    closest approach %.2f m from the face; stopped after %.0f s at "
+              "east %+.2f north %+.2f (crept %+.2f m sideways)"
+              % (gap_min, t_used, east_f, north_f, north_f - north))
+        if not moved:
+            print("    never moved east, cannot judge a standoff   FAIL")
+            fails += 1
+        elif gap_min < 0.0:
+            print("    went through or round %s   FAIL" % box.name)
             fails += 1
         else:
-            face, box = ahead[0]
-            gap = face - east_f
-            ok = abs(gap - CP_DIST) < 0.7
-            print("    nearest wall ahead: %s, face at east %+.1f, gap %.2f m vs "
-                  "CP_DIST %.1f  %s" % (box.name, face, gap, CP_DIST,
-                                          "ok" if ok else "FAIL"))
+            ok = abs(gap_min - CP_DIST) < 0.7
+            print("    standoff %.2f m vs CP_DIST %.1f  %s"
+                  % (gap_min, CP_DIST, "ok" if ok else "FAIL"))
             if not ok:
                 fails += 1
 

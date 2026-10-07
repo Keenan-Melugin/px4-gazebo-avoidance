@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# @name Gazebo mymodel
+#
+# @type Quadrotor
+#
+# A PX4 airframe file for a Gazebo model of your own. PX4 v1.17.0 convention:
+# the filename is <number>_gz_<model>, the number is unused by any other file
+# in ROMFS/px4fmu_common/init.d-posix/airframes/, and the part after gz_ is
+# the model directory PX4 spawns from Tools/simulation/gz/models/ (linked
+# there by scripts/link_assets.sh). The @type line is what QGroundControl
+# shows; the @name is the make target's description.
+#
+# To use it:
+#   1. cp models/airframe_template/4100_gz_mymodel \
+#         ~/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/4100_gz_mymodel
+#   2. Add the filename to the px4_add_romfs_files(...) list in
+#      ~/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt
+#   3. cd ~/PX4-Autopilot && make clean && make px4_sitl gz_mymodel
+#      (a clean build, because the airframe list is read at configure time;
+#      PX4's "Adding a New Airframe Configuration" page says the same)
+#
+# A sensor variant of the stock quadrotor does not need any of this: start it
+# with PX4_SYS_AUTOSTART=4002 PX4_SIM_MODEL=gz_<model> ./build/px4_sitl_default/bin/px4
+# and the x500_depth airframe below is reused. Only a different vehicle (a
+# VTOL, a different rotor count, different mass and limits) needs a file.
+
+# Which simulator and world this airframe expects. ${X:=y} sets only if unset,
+# so PX4_GZ_WORLD=pillars on the command line still wins.
+PX4_SIMULATOR=${PX4_SIMULATOR:=gz}
+PX4_GZ_WORLD=${PX4_GZ_WORLD:=default}
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=mymodel}
+
+# For a quadrotor, inherit everything from PX4's x500 and stop here. The x500
+# file sets the control allocation (CA_*) for four rotors in an X, the SIH and
+# Gazebo motor output mapping, and sensible rate and position gains.
+. ${R}etc/init.d-posix/airframes/4001_gz_x500
+
+# For a VTOL, replace the line above with the matching stock file and then
+# override what differs. PX4 v1.17.0 ships:
+#   4018_gz_quadtailsitter  four rotors, no cruise motor: CA_AIRFRAME 4, VT_TYPE 0
+#   4004_gz_standard_vtol   quadrotor plus a pusher:      CA_AIRFRAME 2, VT_TYPE 2
+#   4020_gz_tiltrotor
+# e.g.
+#   . ${R}etc/init.d-posix/airframes/4018_gz_quadtailsitter
+#
+# Parameters your vehicle changes go after the inheritance, as set-default so
+# a saved parameter file still wins over them:
+#   param set-default MPC_XY_VEL_MAX 8
+#   param set-default CA_ROTOR0_PX 0.25
+#
+# Collision prevention lives in the multicopter position controller and stops
+# during VTOL transition (docs/extend.md, section 3), so the gate's numbers
+# apply to hover and multicopter flight of a VTOL, not to cruise.

@@ -20,6 +20,7 @@ brakes. Switch avoidance off and it hits the wall.
 | Understand how the pieces talk, and where they bite | [docs/how-it-works.md](docs/how-it-works.md) |
 | Change it, and prove the change did what you meant | [docs/change-it.md](docs/change-it.md) |
 | Add to it: a world, a sensor, an airframe, a second machine | [docs/extend.md](docs/extend.md) |
+| Get data out, put inputs in, change the conditions of a run | [docs/data.md](docs/data.md) |
 | Look a command up | [COMMANDS.md](COMMANDS.md) |
 
 ## Status
@@ -29,7 +30,7 @@ threads and an AMD RX 7800 XT unless the row says otherwise.
 
 | | Result |
 |---|---|
-| Brake mode: standoff from a wall at `CP_DIST 2.0` | 1.98, 2.05, 2.60 and 2.09 m in four runs here; 2.02 and 2.07 m on a fresh install. With avoidance off it collides. Started 0.5 m from the wall's end it slides round the end instead (`CP_GUIDE_ANG`), measured once |
+| Brake mode: closest approach to a wall at `CP_DIST 2.0` | 1.98, 2.05, 2.60, 2.09, 2.02 and 1.97 m in six runs here; 2.02 and 2.07 m on a fresh install. With avoidance off it collides. Pushed on after braking it creeps along the face toward free space (`CP_GUIDE_ANG`), 3 m in 14 s, and from 0.5 m inside the wall's end it slides round the end; the test now reads the closest approach and stops pushing once the aircraft stands still |
 | Plan mode: a goal 5.5 m behind a 10 m wall, from 13.5 m out | Reached in 12 of 14 runs since the costmap fix, two on a fresh install. Best 20 s round the near end; the reference run 43 s with a 6.2 m detour. One miss stalled short of the far end; one hugged the wall's face and touched it. One pass took a 25 m detour on the global costmap's memory of earlier runs |
 | Heading hold | Worst error 5.6 degrees over 0, 90, 180 and -90 |
 | A second world, `pillars`, `--world pillars` | Passes: 2.04 m standoff from its east wall after two pillars pushed the aircraft 3.9 m sideways; Nav2 round its 6 m wall with a 4.2 m excursion. Its walls are read from its file |

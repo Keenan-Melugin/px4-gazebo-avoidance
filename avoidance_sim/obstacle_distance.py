@@ -32,6 +32,8 @@ name has its own parameters:
     <name>.yaw_deg          sensor forward relative to body forward,
                             clockwise positive, like the histogram's bearings
     <name>.min_distance_cm, <name>.max_distance_cm
+The launch loads such a file with sensors:=file.yaml (config/sensors_lidar.yaml
+and config/sensors_example.yaml are the examples).
 With `sources` empty the node is the single-camera node it was, built from
 the legacy parameters (cloud_topic, cloud_frame, hfov_deg, mount_xyz_frd,
 min/max_distance_cm), and a source named `camera` takes those as its

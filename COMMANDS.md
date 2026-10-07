@@ -71,7 +71,9 @@ RViz-side nodes, and RViz. Arguments:
 | `agent_cmd:=/path/to/MicroXRCEAgent` | `MicroXRCEAgent` | The agent is not on `PATH` |
 | `world:=pillars` | `walls` | The world PX4 was started with, so RViz draws its walls. Looked up where PX4 looks, then in this package's `worlds/` |
 | `world_sdf:=/path/to/world.sdf` | empty | A world file by path instead of by name |
-| `lidar:=true` | false | The aircraft is `models/x500_depth_lidar`: bridge its `/lidar` scan and merge it into the histogram |
+| `lidar:=true` | false | The aircraft is `models/x500_depth_lidar`: bridge its `/lidar` scan and merge it into the histogram (`config/sensors_lidar.yaml`) |
+| `sensors:=/path/file.yaml` | empty | Describe any sensor set to the obstacle node; `config/sensors_example.yaml` is the template |
+| `bridge_extra:="/topic@ros_type[gz_type"` | empty | Bridge the Gazebo topics a sensors file needs, space-separated |
 | `px4_bin:=/path/to/build/px4_sitl_default/bin` | `~/PX4-Autopilot/build/px4_sitl_default/bin` | Where `px4-param` is, for setting the parameters below |
 | `px4_params:="CP_DIST=3.0 ..."` | the four below | Change the parameters the launch sets. `px4_params:=""` skips it |
 
@@ -245,6 +247,21 @@ clicking in RViz while a script runs, the two fight over the same goal topic.
 Run the gate after any change to the pilot, the frames, the obstacle node or
 the Nav2 configuration. If a number moves, the change did something it was not
 meant to. `test/README.md` has the full table.
+
+## Data out, data in
+
+```bash
+ls ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*/   # PX4's own flight logs; 6 GB per long armed session
+ulog_info file.ulg                                        # pip install pyulog; ulog2csv -m obstacle_distance file.ulg
+scripts/record.sh NAME [--cloud] [--lidar]                # rosbag2 of the run; the cloud is 21.7 MB/s
+ros2 bag play NAME --topics /clock /depth_camera/points   # replay into a standalone obstacle node, no simulator
+ros2 topic pub --once /avoidance_sim/pilot_goal geometry_msgs/msg/PoseStamped \
+    "{header: {frame_id: odom}, pose: {position: {x: 2.0, y: 0.0, z: 7.0}}}"   # x east, y north, z up
+px4-failure gps off                                       # PX4 failure injection; px4-failure help lists the rest
+```
+
+[docs/data.md](docs/data.md) has the input topics, the sensors file, and the
+conditions (spawn pose, speed, wind, battery, a sensor that stops).
 
 ## When it goes wrong
 

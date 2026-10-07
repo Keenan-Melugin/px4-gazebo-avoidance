@@ -1,0 +1,17 @@
+# The 360 degree 2D lidar on models/x500_depth_lidar, described to the obstacle
+# node. `lidar:=true` on the launch loads this file; `sensors:=/path/to/yours.yaml`
+# loads any other. Nested keys become dotted parameter names (lidar.type), and
+# a source named `camera` keeps the stock camera's values unless overridden.
+#
+# The mount is model.sdf's pose (-0.10, 0, 0.30), FLU, written here in FRD. The
+# same numbers are LIDAR_XYZ in frames.py (the TF frame RViz draws the scan in)
+# and the pose in the model file: change one, change all three.
+obstacle_distance_publisher:
+  ros__parameters:
+    sources: "camera lidar"
+    lidar:
+      type: scan
+      topic: /lidar
+      mount_xyz_frd: [-0.10, 0.0, -0.30]
+      min_distance_cm: 30
+      max_distance_cm: 3000

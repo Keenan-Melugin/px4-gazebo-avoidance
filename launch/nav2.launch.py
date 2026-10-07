@@ -110,6 +110,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'lidar', default_value='false',
             description='Passed through: the aircraft carries the extra lidar.'),
+        DeclareLaunchArgument(
+            'sensors', default_value='',
+            description='Passed through: a parameter file describing the '
+                        'obstacle node\'s sensors.'),
+        DeclareLaunchArgument(
+            'bridge_extra', default_value='',
+            description='Passed through: extra Gazebo-to-ROS bridge specs.'),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -120,6 +127,8 @@ def generate_launch_description():
                 'agent_cmd': LaunchConfiguration('agent_cmd'),
                 'world': LaunchConfiguration('world'),
                 'lidar': LaunchConfiguration('lidar'),
+                'sensors': LaunchConfiguration('sensors'),
+                'bridge_extra': LaunchConfiguration('bridge_extra'),
             }.items()),
 
         # The depth cloud flattened into a 2D scan, because Nav2 costmaps are
