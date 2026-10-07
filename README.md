@@ -66,4 +66,6 @@ which is a different program and will not work.
 
 ## License
 
-BSD-3-Clause, the same licence as PX4 and `px4_msgs`. See `LICENSE`.
+None yet: all rights reserved until the ownership of placement work is
+settled with the university. The three files derived from PX4 stay under
+PX4's BSD-3-Clause licence; `NOTICE` names them and carries its text.

@@ -1,6 +1,22 @@
+No licence is granted for this repository as a whole. All rights reserved by
+the author until the ownership of work done on placement is settled with the
+university. Reading and forking on GitHub are permitted by GitHub's terms;
+copying, modifying or redistributing the code is not, until a licence is added.
+
+Three files are derived from PX4-gazebo-models, which is BSD-3-Clause, and
+they remain under that licence with its notice reproduced below as it
+requires:
+
+  worlds/pillars.sdf                 the header (physics, ground, sun, spherical coordinates) is from worlds/walls.sdf
+  models/x500_depth_lidar/model.sdf  the camera part is models/x500_depth/model.sdf line for line
+  patches/px4-camera-res.patch       a diff of models/OakD-Lite/model.sdf
+
+PX4-gazebo-models: https://github.com/PX4/PX4-gazebo-models
+
 BSD 3-Clause License
 
-Copyright (c) 2026, Keenan Melugin
+Copyright (c) 2012 - 2023, PX4 Development Team
+All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
