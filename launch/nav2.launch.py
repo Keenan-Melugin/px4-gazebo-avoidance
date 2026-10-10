@@ -10,10 +10,11 @@ working first and can tell which layer broke.
 What this adds:
 
     depth cloud --> pointcloud_to_laserscan --> /scan --> Nav2 costmaps
-    goal --> planner --> MPPI controller --> /cmd_vel --> software pilot
+    goal --> planner --> regulated pure pursuit --> /cmd_vel --> software pilot
 
 The last arrow is the design decision, and the first version of this got it
-wrong in a way worth recording.
+wrong in a way that taught something. (MPPI was the first controller; why it
+was replaced is in config/nav2.yaml.)
 
 The intent was defence in depth. Nav2's /cmd_vel could be turned into PX4
 trajectory setpoints in Offboard mode, which is the obvious route, but PX4
