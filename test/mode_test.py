@@ -94,6 +94,14 @@ class M(Node):
         self.mode.publish(m)
 
     def goal(self, east, north, alt, hdg):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace (measured 2026-10-10 in yaw_test.py).
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.pilot.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
         g.header.frame_id = 'odom+yaw'
@@ -134,7 +142,13 @@ def spin(n, s):
 def main():
     rclpy.init()
     n = M()
-    spin(n, 4.0)
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
     if n.pos is None:
         print("  no position"); return 1
 

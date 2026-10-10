@@ -4,7 +4,8 @@
     cp test/template_measure.py test/my_measure.py
     python3 test/my_measure.py --world walls
 
-The shape every script here follows, because it is what makes a number mean
+The shape new scripts should follow (the gate's two halves do; the older
+single-purpose scripts predate it), because it is what makes a number mean
 something a week later:
 
   1. Say what is being measured, in the docstring, with the question it

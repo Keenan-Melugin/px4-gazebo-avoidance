@@ -9,6 +9,10 @@ import math
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import ensure_airborne, set_pilot_mode  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (QoSProfile, ReliabilityPolicy, HistoryPolicy,
                        DurabilityPolicy)
@@ -60,8 +64,21 @@ def spin(n, secs):
 
 def main():
     rclpy.init()
+    # Take off first if needed: this used to assume the aircraft was
+    # already flying, and on a fresh stack measured nothing (2026-10-10).
+    if ensure_airborne() is None:
+        print("  could not arm and take off"); return 1
     n = P()
-    spin(n, 4.0)
+    # The sweep owns the sticks: the pilot stops streaming its own, or
+    # the two fight and the sweep measures nothing (2026-10-10).
+    set_pilot_mode('external')
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.yaw is not None:
+            break
     if n.yaw is None:
         print("  no heading"); return 1
     print("  airborne at %.1f m, heading %+.1f" % (n.alt, math.degrees(n.yaw)))
@@ -96,9 +113,10 @@ def main():
         print("  is still wanted, or it stalls short of the heading.")
     n.stick = 0.0
     spin(n, 1.0)
+    set_pilot_mode('brake')
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return 1 if first is None else 0
 
 
 if __name__ == '__main__':

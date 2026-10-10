@@ -96,8 +96,8 @@ and names the bin that went wrong rather than the wall the aircraft hit.
 **Change the standoff.** `CP_DIST` is a PX4 parameter the launch sets. Pass
 `px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1"` to the
 launch, or `param set CP_DIST 3.0` at the `pxh>` prompt on a running PX4.
-Measure with `test/avoid_test.py`, which repositions, flies at a known wall and
-prints the gap. Expect a spread of a third of the setpoint.
+Measure with `test/regression.py`, the gate's brake half, which finds the wall
+from the world file, takes a run-up and prints the closest approach. Expect a spread of a third of the setpoint.
 
 **Change the camera.** Resolution and rate are in
 `patches/px4-camera-res.patch`, applied to the OakD-Lite model in the PX4

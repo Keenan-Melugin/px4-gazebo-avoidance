@@ -170,6 +170,34 @@ def first_face_ahead(boxes, east, north, alt, direction, margin=0.0):
     return faces[0] if faces else None
 
 
+def clearance(boxes, east, north):
+    """Horizontal distance from (east, north) to the nearest box, metres."""
+    best = float('inf')
+    for b in boxes:
+        dx = max(b.x_min - east, 0.0, east - b.x_max)
+        dy = max(b.y_min - north, 0.0, north - b.y_max)
+        best = min(best, (dx * dx + dy * dy) ** 0.5)
+    return best
+
+
+def clear_point(boxes, min_clear, near=(0.0, 0.0), extent=40.0, step=2.0):
+    """The point nearest `near` with no box within `min_clear` metres.
+
+    For tests that need open air, such as flying a known direction without
+    collision prevention deflecting the aircraft. None if nothing qualifies.
+    """
+    best, best_d = None, float('inf')
+    n = int(extent / step)
+    for i in range(-n, n + 1):
+        for j in range(-n, n + 1):
+            e, no = near[0] + i * step, near[1] + j * step
+            if clearance(boxes, e, no) >= min_clear:
+                d = (e - near[0]) ** 2 + (no - near[1]) ** 2
+                if d < best_d:
+                    best, best_d = (e, no), d
+    return best
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description='Print what a world looks like to the measurement scripts.')

@@ -50,6 +50,15 @@ class T(Node):
         self.arm = m.arming_state
 
     def send(self, east, north, alt, hdg_deg=None):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace: measured 2026-10-10, the heading test's first
+        # command never reached the pilot in two runs of three.
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.goal.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         """hdg_deg is the NED heading wanted, or None for position only."""
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
@@ -82,7 +91,13 @@ def spin(n, secs):
 def main():
     rclpy.init()
     n = T()
-    spin(n, 4.0)
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
     if n.pos is None:
         print("  no position"); return 1
     print("  start: alt %.2f  heading %+.1f  nav %s  armed %s"
@@ -133,7 +148,7 @@ def main():
     print("\n  ===== %s =====" % ("ALL PASS" if bad == 0 else "%d FAILED" % bad))
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return bad
 
 
 if __name__ == '__main__':

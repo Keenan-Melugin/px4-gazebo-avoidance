@@ -126,6 +126,15 @@ class N2(Node):
         return math.hypot(b[0] - a[0], b[1] - a[1]) / dt if dt > 0.2 else 0.0
 
     def goal_pilot(self, east, north, alt, hdg=None):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace: measured 2026-10-10, the heading test's first
+        # command never reached the pilot in two runs of three.
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.pilot.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
         g.header.frame_id = 'odom' if hdg is None else 'odom+yaw'
@@ -227,13 +236,23 @@ def main():
     if not n.armed:
         print("  could not arm"); return 1
 
-    print("  positioning at east %.1f north %.1f alt %.1f, facing north"
+    # Reposition facing the way it goes, then turn north. The camera sees 73
+    # degrees ahead only, so flying to the start facing north flew blind:
+    # measured 2026-10-10, from east 100 it flew west into a wall facing
+    # north and turned the aircraft over.
+    print("  positioning at east %.1f north %.1f alt %.1f, facing the route"
           % (start[0], start[1], alt))
-    n.goal_pilot(start[0], start[1], alt, 0.0)
+    hdg = math.degrees(math.atan2(start[0] - n.pos[1], start[1] - n.pos[0]))
+    n.goal_pilot(start[0], start[1], alt, hdg)
     for _ in range(75):
         spin(n, 1.0)
         if (abs(n.pos[1] - start[0]) < 1.2 and abs(n.pos[0] - start[1]) < 1.2
                 and n.pos[2] > alt - 1.5):
+            break
+    n.goal_pilot(start[0], start[1], alt, 0.0)
+    for _ in range(20):
+        spin(n, 1.0)
+        if abs(math.degrees(n.yaw)) < 10.0:
             break
     print("  at east %+.2f north %+.2f alt %.2f heading %+.0f"
           % (n.pos[1], n.pos[0], n.pos[2], math.degrees(n.yaw)))

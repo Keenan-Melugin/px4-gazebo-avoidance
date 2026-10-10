@@ -15,6 +15,10 @@ import subprocess
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import ensure_airborne  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -71,6 +75,14 @@ class C(Node):
         m = String(); m.data = s; self.mode.publish(m)
 
     def goal(self, e, n, a, h):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace (measured 2026-10-10 in yaw_test.py).
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.pilot.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
         g.header.frame_id = 'odom+yaw'
@@ -119,8 +131,18 @@ def trial(n, label, drive, want):
 
 def main():
     rclpy.init()
+    # Take off first if needed: this used to assume the aircraft was
+    # already flying, and on a fresh stack measured nothing (2026-10-10).
+    if ensure_airborne() is None:
+        print("  could not arm and take off"); return 1
     n = C()
-    spin(n, 4.0)
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
     if n.pos is None:
         print("  no position"); return 1
     subprocess.run(["px4-param", "set", "CP_DIST", "2.0"], capture_output=True)

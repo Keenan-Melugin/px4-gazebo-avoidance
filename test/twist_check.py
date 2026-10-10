@@ -11,10 +11,13 @@ FLU means x forward, y LEFT, z up. So with the nose north:
     flying east  -> twist.linear.y NEGATIVE (east is to the right, not left)
     climbing     -> twist.linear.z positive
 """
+import argparse
 import math
 import time
 
 import rclpy
+
+from avoidance_sim import world_geometry
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -60,6 +63,15 @@ class T(Node):
         self.twist = (t.x, t.y, t.z)
 
     def send(self, east, north, alt, hdg=None):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace: measured 2026-10-10, the heading test's first
+        # command never reached the pilot in two runs of three.
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.goal.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
         g.header.frame_id = 'odom' if hdg is None else 'odom+yaw'
@@ -107,9 +119,21 @@ def peak(n, secs):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--world', default='walls',
+                    help='world name (as PX4_GZ_WORLD) or path to its .sdf')
+    a = ap.parse_args()
+    boxes = world_geometry.load_boxes(world_geometry.resolve_world(a.world))
+
     rclpy.init()
     n = T()
-    spin(n, 4.0)
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None and n.twist is not None:
+            break
     if n.pos is None or n.twist is None:
         print("  no position or no /odom"); return 1
 
@@ -125,12 +149,25 @@ def main():
     if not n.armed:
         print("  could not arm"); return 1
 
-    east, north = n.pos[1], n.pos[0]
-    print("  climbing and pointing north")
-    n.send(east, north, 8.0, 0.0)
-    for _ in range(25):
+    # Open air, 15 m from any wall: the legs fly 12 m north, east and up, and
+    # near a wall collision prevention deflects them, which once made this
+    # report a wrong frame for a right one (2026-10-10).
+    clear = world_geometry.clear_point(boxes, 15.0)
+    if clear is None:
+        print("  no point 15 m from every wall in this world"); return 2
+    east, north = clear
+    print("  climbing, flying to open air at east %+.0f north %+.0f, pointing north" % (east, north))
+    hdg = math.degrees(math.atan2(east - n.pos[1], north - n.pos[0]))
+    n.send(east, north, 8.0, hdg)          # face the route: the camera sees ahead only
+    for _ in range(60):
         spin(n, 1.0)
-        if n.pos[2] > 7.0 and abs(math.degrees(n.yaw)) < 10:
+        if abs(n.pos[1] - east) < 1.0 and abs(n.pos[0] - north) < 1.0:
+            break
+    n.send(east, north, 8.0, 0.0)
+    for _ in range(30):
+        spin(n, 1.0)
+        if (n.pos[2] > 7.0 and abs(math.degrees(n.yaw)) < 10
+                and abs(n.pos[1] - east) < 1.0 and abs(n.pos[0] - north) < 1.0):
             break
     print("  at alt %.1f heading %+.1f" % (n.pos[2], math.degrees(n.yaw)))
     spin(n, 4.0)
@@ -169,7 +206,7 @@ def main():
                     if ok else "TWIST FRAME IS WRONG, Nav2 would mis-plan"))
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == '__main__':

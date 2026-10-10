@@ -126,6 +126,11 @@ class SoftwarePilot(Node):
     # Offboard.
     MODE_BRAKE = 'brake'
     MODE_PLAN = 'plan'
+    # For the stick-sweep measurements in test/: the pilot stops publishing
+    # sticks so a script can own the stream. Two publishers on the one topic
+    # made the sweeps measure nothing at all (2026-10-10). The script must
+    # stream at 50 Hz itself, or PX4 declares RC loss after 0.5 s.
+    MODE_EXTERNAL = 'external'
     # PX4 drops Offboard if the setpoint stream stops for COM_OF_LOSS_T,
     # which is 1.0 s by default, so plan mode keeps streaming zeros when Nav2
     # goes quiet rather than going silent and tripping the failsafe.
@@ -261,14 +266,21 @@ class SoftwarePilot(Node):
 
     def on_mode(self, m):
         want = (m.data or '').strip().lower()
-        if want not in (self.MODE_BRAKE, self.MODE_PLAN):
+        if want not in (self.MODE_BRAKE, self.MODE_PLAN, self.MODE_EXTERNAL):
             self.get_logger().warn(
                 f'ignoring unknown mode {want!r}; use '
-                f'{self.MODE_BRAKE!r} or {self.MODE_PLAN!r}')
+                f'{self.MODE_BRAKE!r}, {self.MODE_PLAN!r} or {self.MODE_EXTERNAL!r}')
             return
         if want == self.mode:
             return
         self.mode = want
+        if want == self.MODE_EXTERNAL:
+            self.active = False
+            self.goal = None
+            self.get_logger().info(
+                'EXTERNAL mode: not publishing sticks; another program owns '
+                'the stick stream. Send brake to take it back.')
+            return
         if want == self.MODE_PLAN:
             self.active = False
             self.goal = None
@@ -423,6 +435,8 @@ class SoftwarePilot(Node):
         self.get_logger().info('pilot stopped, holding position')
 
     def tick(self):
+        if self.mode == self.MODE_EXTERNAL:
+            return
         if self.mode == self.MODE_PLAN:
             self.tick_plan()
             return

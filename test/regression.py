@@ -45,6 +45,20 @@ CP_DIST = 2.0
 NAV_POSCTL = 2
 
 
+def bearing(e0, n0, e1, n1):
+    """Compass bearing in degrees from (e0, n0) to (e1, n1): 0 north, 90 east.
+
+    For repositioning: the camera sees 73 degrees ahead and nothing else, and
+    CP_GO_NO_DATA 1 lets PX4 fly into what it cannot see, so a reposition must
+    face the way it goes or it flies blind. Measured 2026-10-10: a reposition
+    facing north while flying west flew into a wall and turned the aircraft
+    over.
+    """
+    if abs(e1 - e0) < 0.5 and abs(n1 - n0) < 0.5:
+        return 0.0
+    return math.degrees(math.atan2(e1 - e0, n1 - n0))
+
+
 def wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
@@ -76,6 +90,15 @@ class R(Node):
         self.nav = m.nav_state
 
     def send(self, east, north, alt, hdg=None):
+        # Wait for the pilot to be connected before the first goal. A goal
+        # published on a new publisher before discovery completes is lost
+        # without a trace: measured 2026-10-10, the heading test's first
+        # command never reached the pilot in two runs of three.
+        if not getattr(self, '_goal_matched', False):
+            t0 = time.time()
+            while self.goal.get_subscription_count() == 0 and time.time() - t0 < 10.0:
+                rclpy.spin_once(self, timeout_sec=0.1)
+            self._goal_matched = True
         g = PoseStamped()
         g.header.stamp = self.get_clock().now().to_msg()
         g.header.frame_id = 'odom' if hdg is None else 'odom+yaw'
@@ -102,6 +125,70 @@ def spin(n, s):
     t = time.time()
     while time.time() - t < s:
         rclpy.spin_once(n, timeout_sec=0.05)
+
+
+def set_pilot_mode(mode):
+    """Publish a pilot mode with the retained QoS the pilot subscribes with."""
+    n = R()
+    m = String()
+    m.data = mode
+    spin(n, 1.0)
+    n.mode.publish(m)
+    spin(n, 1.5)
+    n.destroy_node()
+
+
+def ensure_airborne(alt=7.0, goto=None):
+    """Arm, take off and hold, from whatever state the last script left.
+
+    The single-purpose scripts measure things in flight and used to assume
+    the aircraft was already up, which on a fresh stack meant no measurement.
+    Call this after rclpy.init(). It uses its own node and destroys it, so the
+    calling script's node is untouched. `goto` is an optional (east, north) to
+    fly to first, at `alt`, in brake mode with collision prevention live.
+    Returns the (north, east, alt) it ended at, or None if it could not arm.
+    """
+    n = R()
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
+    if n.pos is None:
+        n.destroy_node()
+        return None
+    m = String()
+    m.data = 'brake'
+    n.mode.publish(m)
+    spin(n, 2.0)
+    if n.arm != 2:
+        stop = PoseStamped()
+        stop.header.frame_id = 'STOP'          # centre the sticks so PX4 will arm
+        n.goal.publish(stop)
+        spin(n, 2.0)
+        for _ in range(20):
+            n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
+            spin(n, 2.0)
+            if n.arm == 2:
+                break
+        if n.arm != 2:
+            n.destroy_node()
+            return None
+    east, north = n.pos[1], n.pos[0]
+    n.send(east, north, alt)
+    for _ in range(30):
+        spin(n, 1.0)
+        if n.pos[2] > alt - 1.0:
+            break
+    if goto is not None:
+        n.send(goto[0], goto[1], alt)
+        for _ in range(60):
+            spin(n, 1.0)
+            if abs(n.pos[1] - goto[0]) < 1.0 and abs(n.pos[0] - goto[1]) < 1.0:
+                break
+    spin(n, 3.0)
+    out = (n.pos[0], n.pos[1], n.pos[2])
+    n.destroy_node()
+    return out
 
 
 def main():
@@ -152,8 +239,9 @@ def main():
             print("  PX4 did not arm (arming_state %s). On a fresh install the usual"
                   % n.arm)
             print("  cause is NAV_DLL_ACT at the airframe default of 2, waiting for a")
-            print("  ground station. Start PX4 with PX4_PARAM_NAV_DLL_ACT=0 (README,")
-            print("  Run) and retry.")
+            print("  ground station. The launch sets it to 0 through px4-param once PX4")
+            print("  answers: check terminal 2 for the [px4_params] lines, or run")
+            print("  px4-param show NAV_DLL_ACT, then retry.")
             return 1
         n.send(n.pos[1], n.pos[0], 7.0)
         for _ in range(30):
@@ -246,20 +334,31 @@ def main():
     else:
         face, box = pre[0]
         print("    wall ahead: %s, face at east %+.1f" % (box.name, face))
-        # A run-up: a previous test may have parked the aircraft at the
-        # standoff already, and from 2 m away it cannot move toward the
-        # wall at all. Back off to 8 m from the face first; west is free.
-        if face - n.pos[1] < 6.0:
-            print("    only %.1f m from the face; backing off to 8 m for a run-up"
+        # Always the same run-up: exactly 8 m from the face, facing it. From
+        # closer, the aircraft cannot move toward the wall at all. From
+        # further, the approach is long enough for CP_GUIDE_ANG to steer it
+        # sideways: measured 2026-10-10 from 15 m out, it drifted 8 m south
+        # before braking and then slid round the wall's end. Fly to the
+        # run-up point facing the way it is going, so the camera sees the
+        # route, then turn to face the wall.
+        rx = face - 8.0
+        if abs(n.pos[1] - rx) > 1.0:
+            print("    %.1f m from the face; moving to the 8 m run-up point"
                   % (face - n.pos[1]))
-            n.send(face - 8.0, north, 7.0, 90.0)
-            for _ in range(40):
+            n.send(rx, north, 7.0, bearing(n.pos[1], n.pos[0], rx, north))
+            for _ in range(60):
                 spin(n, 1.0)
-                if abs(n.pos[1] - (face - 8.0)) < 1.0:
+                if abs(n.pos[1] - rx) < 0.8 and abs(n.pos[0] - north) < 0.8:
                     break
-            spin(n, 3.0)
-            east, north = n.pos[1], n.pos[0]
-            print("    now east %+.2f north %+.2f" % (east, north))
+        n.send(rx, north, 7.0, 90.0)
+        for _ in range(20):
+            spin(n, 1.0)
+            if abs(math.degrees(wrap(math.radians(90.0) - n.yaw))) < 10.0:
+                break
+        spin(n, 2.0)
+        east, north = n.pos[1], n.pos[0]
+        print("    run-up from east %+.2f north %+.2f, facing %+.0f deg"
+              % (east, north, math.degrees(n.yaw)))
         # Push east and watch, rather than push for a fixed 48 s and read
         # the end position. Collision prevention brakes at CP_DIST, which
         # is the number this test is for; but while the stick keeps

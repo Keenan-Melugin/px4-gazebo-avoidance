@@ -238,7 +238,6 @@ python3 test/histogram_selftest.py   # the obstacle node alone, no simulator, tw
 python3 -m avoidance_sim.world_geometry pillars --from 0 0 --dir east   # what the tests see in a world
 python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, about 4 min
 python3 test/gate.py --world pillars   # the same gate in the second world
-python3 test/avoid_test.py       # standoff from a wall. Repositions itself first
 python3 test/regression.py       # brake mode: heading hold and the standoff, exit code counts failures
 python3 test/mode_test.py        # the brake/plan toggle, both directions
 python3 test/yaw_threshold.py    # sweeps the yaw stick to find its dead band

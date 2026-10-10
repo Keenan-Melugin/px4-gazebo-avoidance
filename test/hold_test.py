@@ -9,6 +9,10 @@ import math
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import ensure_airborne  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (QoSProfile, ReliabilityPolicy, HistoryPolicy,
                        DurabilityPolicy)
@@ -67,8 +71,18 @@ def spin(n, secs):
 
 def main():
     rclpy.init()
+    # Take off first if needed: this used to assume the aircraft was
+    # already flying, and on a fresh stack measured nothing (2026-10-10).
+    if ensure_airborne() is None:
+        print("  could not arm and take off"); return 1
     n = H()
-    spin(n, 4.0)
+    # Up to 20 s for the first data. A fixed 4 s was enough on the
+    # development machine and not on a 4-core one, where DDS discovery had
+    # not finished and the script quit before measuring anything.
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.yaw is not None:
+            break
     if n.yaw is None:
         print("  no heading"); return 1
 
@@ -113,8 +127,8 @@ def main():
         print("  the earlier test was drift measured 22 s after arrival, not")
         print("  a control problem. Fix the hold, not the gains.")
     elif abs(coast) > 10:
-        print("  Heading holds, but it coasts %.0f deg past the cut point, so")
-        print("  the control law needs to brake rather than simply stop." % abs(coast))
+        print("  Heading holds, but it coasts %.0f deg past the cut point, so" % abs(coast))
+        print("  the control law needs to brake rather than simply stop.")
     else:
         print("  Both fine: holds, and coasts only %.1f deg." % abs(coast))
     n.yawstick = 0.0
