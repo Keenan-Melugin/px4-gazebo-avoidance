@@ -267,7 +267,7 @@ uXRCE-DDS middleware pages, Logging and Flight Log Analysis, Collision
 Prevention). This repo's examples: `scripts/px4_params.sh` for how
 parameters are set from outside, `px4-listener obstacle_distance` for
 reading a uORB topic live, and the collision-prevention source lines cited
-in [extend.md](extend.md).
+in [extend/sensors.md](extend/sensors.md).
 
 ## The bridge: Micro XRCE-DDS Agent and px4_msgs
 
@@ -295,7 +295,7 @@ serial port.
 https://docs.px4.io/v1.17/en/middleware/uxrce_dds.html and the ROS 2 User
 Guide beside it; https://github.com/PX4/px4_msgs. `scripts/install.sh` shows
 the build of both, and the "which side runs where" section of
-[extend.md](extend.md) says what moves when the agent moves.
+[extend/second-machine.md](extend/second-machine.md) says what moves when the agent moves.
 
 ## RViz
 
@@ -431,7 +431,7 @@ sides of reality, which is the comparison the project is working toward.
 - PX4 user guide v1.17: Flight Modes, Simulation, uORB Messaging, uXRCE-DDS,
   ROS 2 User Guide, Logging, ULog File Format, Flight Log Analysis,
   Collision Prevention. https://docs.px4.io/v1.17/en/
-- PX4 v1.17.0 source as cited in [extend.md](extend.md) and [data.md](data.md).
+- PX4 v1.17.0 source as cited in the [extend](extend.md) pages and [data.md](data.md).
 - px4_msgs, https://github.com/PX4/px4_msgs; eProsima Micro XRCE-DDS,
   https://micro-xrce-dds.docs.eprosima.com/
 - pyulog, https://github.com/PX4/pyulog; Flight Review,

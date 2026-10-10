@@ -50,5 +50,5 @@ PX4_SIM_MODEL=${PX4_SIM_MODEL:=mymodel}
 #   param set-default CA_ROTOR0_PX 0.25
 #
 # Collision prevention lives in the multicopter position controller and stops
-# during VTOL transition (docs/extend.md, section 3), so the gate's numbers
+# during VTOL transition (docs/extend/airframes.md), so the gate's numbers
 # apply to hover and multicopter flight of a VTOL, not to cruise.

@@ -52,7 +52,7 @@ obstacle_distance_publisher:
 
     # A 270 degree scanner on the right side, like PX4's lidar_2d_v2 but on
     # its own link and topic so PX4's bridge does not also publish from it
-    # (docs/extend.md, section 2).
+    # (docs/extend/sensors.md).
     side:
       type: scan
       topic: /side

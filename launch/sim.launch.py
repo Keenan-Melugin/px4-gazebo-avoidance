@@ -22,7 +22,7 @@ editing this launch: lidar:=true loads config/sensors_lidar.yaml, and
 sensors:=/path/to/yours.yaml loads any other (config/sensors_example.yaml is
 the template). A sensor on a new Gazebo topic also needs that topic bridged,
 which is bridge_extra:="/topic@ros_type[gz_type ..." in the same syntax as
-BRIDGE_TOPICS below. docs/extend.md has the recipes, docs/data.md the inputs.
+BRIDGE_TOPICS below. docs/extend/sensors.md has the recipes, docs/data.md the inputs.
 
 This launch also sets the four PX4 parameters the stack needs, through PX4's
 own px4-param client, as soon as PX4 answers (px4_params to change them,

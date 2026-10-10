@@ -1,8 +1,8 @@
 # Worlds
 
 `pillars.sdf` is the second world and the template; `walls` is PX4's own and
-lives in its tree. The full account is [docs/extend.md](../docs/extend.md),
-section 1. The short version:
+lives in its tree. The full account is
+[docs/extend/worlds.md](../docs/extend/worlds.md). The short version:
 
 1. Copy `pillars.sdf` to `yourname.sdf`. Keep everything above the first
    obstacle (physics, gravity, magnetic field, ground, sun, spherical

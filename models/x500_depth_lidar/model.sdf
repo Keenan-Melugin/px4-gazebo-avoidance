@@ -27,7 +27,7 @@
     cd ~/PX4-Autopilot/build/px4_sitl_default/rootfs
     PX4_SYS_AUTOSTART=4002 PX4_SIM_MODEL=gz_x500_depth_lidar PX4_GZ_WORLD=walls HEADLESS=1 ../bin/px4
   (make px4_sitl gz_<name> only exists for models with an airframe file in
-  PX4's tree; docs/extend.md says why this form is used instead.)
+  PX4's tree; docs/extend/sensors.md says why this form is used instead.)
 -->
 <sdf version='1.9'>
   <model name='x500_depth_lidar'>

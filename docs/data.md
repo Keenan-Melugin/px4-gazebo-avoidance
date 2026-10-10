@@ -214,7 +214,7 @@ are launch-time only.
 ### Where it flies
 
 `PX4_GZ_WORLD=name` for PX4 and `world:=name` for the
-launch ([extend.md](extend.md) section 1 for making one).
+launch ([extend/worlds.md](extend/worlds.md) for making one).
 `PX4_GZ_MODEL_POSE="x,y,z,roll,pitch,yaw"` spawns the aircraft elsewhere
 (metres and radians, missing values zero); `PX4_HOME_LAT`, `PX4_HOME_LON` and
 `PX4_HOME_ALT`, all three together, move the world's origin on the globe.

@@ -65,8 +65,8 @@ That describes the stock stack, one camera. The node takes any number of
 sensors, point clouds and laser scans, each with its own mount and arc, and
 merges them before PX4 sees anything: nearest range per bin, observed arcs
 added together. The merging has to happen here because PX4 overwrites
-rather than merges two histogram publishers. [extend.md](extend.md),
-section 2, has the sensor list and the measured lidar case.
+rather than merges two histogram publishers. [extend/sensors.md](extend/sensors.md)
+has the sensor list and the measured lidar case.
 
 The message has three bin states, and conflating two of them is the bug to
 avoid:

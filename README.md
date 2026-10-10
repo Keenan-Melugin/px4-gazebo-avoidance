@@ -48,7 +48,8 @@ What it is not: avoidance here is a hover capability. PX4's collision
 prevention is horizontal only, runs in Position mode only, and stops during
 VTOL transition. The camera sees a 73 degree arc ahead, so the aircraft has
 to point roughly where it is going. Nothing here has run on
-real hardware. The airframe is PX4's `x500_depth`; plain `x500` has no camera,
+real hardware. Nav2 plans on the camera only; the lidar feeds collision
+prevention but not the planner yet. The airframe is PX4's `x500_depth`; plain `x500` has no camera,
 and `models/x500_depth_lidar` here adds a 360 degree 2D lidar to it.
 
 ## Hardware

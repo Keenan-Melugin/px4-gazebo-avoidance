@@ -2,8 +2,8 @@
 
 `x500_depth_lidar` is the stock aircraft plus a 2D lidar, and the template
 for a model with one more sensor. The full account, with the PX4 source lines
-that decide the mechanism, is [docs/extend.md](../docs/extend.md), sections 2
-and 3. The short version, in order of effort:
+that decide the mechanism, is [docs/extend/sensors.md](../docs/extend/sensors.md) and
+[docs/extend/airframes.md](../docs/extend/airframes.md). The short version, in order of effort:
 
 ## A sensor variant of the stock aircraft
 

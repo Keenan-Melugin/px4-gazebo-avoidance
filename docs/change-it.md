@@ -15,7 +15,8 @@ docs/
   fly.md                flying from RViz in brake mode and plan mode, and what looks like a fault but is not
   how-it-works.md       the two data paths and the measurements behind each design decision
   change-it.md          this page
-  extend.md             adding a world, a sensor, an airframe or a second machine
+  extend.md             index of the four extension pages, and where PX4 looks for worlds and models
+  extend/               worlds.md, sensors.md, airframes.md, second-machine.md: one page per kind of addition
   data.md               flight logs, bags, replay, the input topics, configuration by file, the conditions of a run
   img/                  the three screenshots
 avoidance_sim/
@@ -125,7 +126,7 @@ all, and the stack then has no navigator.
 **Use another world.** `PX4_GZ_WORLD=name` for PX4, `world:=name` on the
 launch and `--world name` for the tests. The wall positions come from the
 world file in all three places, through `world_geometry.py`, so nothing is
-typed twice. Making a world is in [extend.md](extend.md).
+typed twice. Making a world is in [extend/worlds.md](extend/worlds.md).
 
 **Add a node to the bridge.** Write it as a plain `rclpy` node, add the class
 to `NODE_TYPES` in `rviz_bridge.py`, and use `PX4_QOS` from `frames.py` for
@@ -145,7 +146,7 @@ teach `goal_bridge.py` whether to act on `/goal_pose` in it.
 **Add or replace a sensor.** The obstacle node takes a list of sensors
 (`sources`), point clouds or laser scans, and merges them before PX4 sees
 any of them, because PX4 cannot merge two histogram publishers. The schema,
-the bundled lidar model and the reasons are in [extend.md](extend.md). The
+the bundled lidar model and the reasons are in [extend/sensors.md](extend/sensors.md). The
 three bin states are the contract whatever the sensor: a range,
 `max_distance + 1` for observed-and-clear, `UINT16_MAX` for unobserved.
 Getting the last two the wrong way round makes PX4 refuse to move, or move
