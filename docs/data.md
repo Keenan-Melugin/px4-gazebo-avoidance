@@ -245,8 +245,8 @@ launch ([extend/worlds.md](extend/worlds.md) for making one).
 Gazebo for twice real time, and PX4's startup script scales its link-loss
 timeouts to match. PX4 and Gazebo run in lockstep, meaning each simulation
 step waits for both to finish, so the factor is a
-target the machine may not reach, and the script only applies it when it
-spawns the model, not when it attaches to a world already running. Untested
+target the machine may not reach. The script only applies it when it spawns
+the model, not when it attaches to a world already running. Untested
 here. The thing to check first is the stick stream: the pilot runs on
 simulation time, so at factor 2 it must deliver 100 messages per wall-clock
 second or PX4 sees RC loss.
