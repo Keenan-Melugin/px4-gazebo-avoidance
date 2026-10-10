@@ -60,7 +60,7 @@ and `models/x500_depth_lidar` here adds a 360 degree 2D lidar to it.
 | CPU | 4 cores installs and runs it, with degraded flight dynamics under aggressive manoeuvres. 6 or more for the behaviour in the table above. Below 4 untested |
 | GPU | Hardware OpenGL 3.3 or better is a requirement, not a preference: software rendering runs at 0.033 real time. On WSL, `GALLIUM_DRIVER=d3d12` |
 | Time | About 1.5 hours on 4 cores and a spinning disk, nearly all waiting on installs and builds |
-| OS | Ubuntu 24.04. WSL2 tested; native Ubuntu untested but nothing here is WSL-specific. Raspberry Pi 5 untested; Raspberry Pi OS cannot (no Jazzy packages for Debian). VMware VM on Windows installs and flies, avoidance not validated (2 Hz camera). Mac through an Ubuntu 24.04 arm64 VM, untested. Details in the install guide |
+| OS | Ubuntu 24.04: under WSL2 on Windows (tested), natively (untested, nothing here is WSL-specific), or in a VMware VM (installs and flies, avoidance not validated: 2 Hz camera). Raspberry Pi 5 untested; Raspberry Pi OS cannot (no Jazzy packages for Debian). The install guide starts from the operating system |
 
 ## Versions
 

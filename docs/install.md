@@ -7,28 +7,83 @@ SSD figure has not been measured yet.
 
 ## Before you start
 
-You need Ubuntu 24.04 with hardware OpenGL, about 20 GB of disk, 8 GB of RAM,
-an internet connection, and roughly an hour and a half. The README has the
-measured hardware table. Three cases to know about now:
+You need a computer with a GPU that supports hardware OpenGL 3.3, about 20 GB
+of free disk, 8 GB of RAM, an internet connection, and roughly an hour and a
+half. The README has the measured hardware table. Nothing is assumed to be
+installed: step 0 starts from the operating system.
 
-- **Windows.** WSL2 is the tested platform. Install Ubuntu 24.04 from the
-  Microsoft Store or `wsl --install Ubuntu-24.04`, and make sure your GPU
-  driver is current, because WSL reaches the GPU through it.
-- **Mac.** An Ubuntu 24.04 arm64 virtual machine with GPU acceleration, on a
-  Mac with 16 GB or more. Untested. Notes at the end.
-- **Raspberry Pi 5 on Ubuntu 24.04 arm64.** Untested. Notes at the end.
-- **Raspberry Pi OS or any other Debian.** Not possible: there are no ROS 2
-  Jazzy packages for it.
-
-The stack has five layers, and the scripts cover three of them:
+The stack has six layers, and the scripts cover three of them:
 
 | Layer | What | Installed by |
 |---|---|---|
-| 1 | Ubuntu 24.04 | You |
-| 2 | ROS 2 Jazzy, Gazebo Harmonic, build tools | `scripts/prereqs.sh` (step 1) |
-| 3 | PX4 v1.17.0, built for simulation | You, with PX4's own setup script (step 2) |
-| 4 | The DDS agent, `px4_msgs`, this package, Nav2 | `scripts/install.sh` (step 3) |
-| 5 | The optional camera patch | You (step 4) |
+| 0 | Ubuntu 24.04, as WSL, natively, or in a virtual machine | You (step 0) |
+| 1 | ROS 2 Jazzy, Gazebo Harmonic, build tools | `scripts/prereqs.sh` (step 1) |
+| 2 | PX4 v1.17.0, built for simulation | You, with PX4's own setup script (step 2) |
+| 3 | The DDS agent, `px4_msgs`, this package, Nav2 | `scripts/install.sh` (step 3) |
+| 4 | The camera patch | You (step 4) |
+
+### Every tool that ends up installed
+
+| Tool | What it is for here | Installed by |
+|---|---|---|
+| Ubuntu 24.04 | The only operating system ROS 2 Jazzy ships binaries for | Step 0 |
+| WSL2, or VMware Workstation | Runs Ubuntu on Windows; not needed on native Ubuntu | Step 0 |
+| git | Fetches this repository and PX4 | Step 1 |
+| ROS 2 Jazzy (`ros-jazzy-desktop`) | The message system, RViz, the launch and bag tools | Step 1 |
+| `ros-dev-tools` (colcon, rosdep, vcstool) | Builds the ROS packages and installs their dependencies | Step 1 |
+| Gazebo Harmonic (`gz-harmonic`) | The simulator | Step 1 |
+| `ros-jazzy-ros-gz` | The Gazebo-to-ROS bridge | Step 1 |
+| PX4 v1.17.0 and its toolchain | The flight controller, built to run as a program | Step 2 |
+| Micro XRCE-DDS Agent v2.4.3 | Carries PX4's messages into ROS 2 | Step 3 |
+| `px4_msgs` (release/1.17) | PX4's message definitions for ROS 2 | Step 3 |
+| Nav2 and `pointcloud_to_laserscan` | Path planning, for plan mode | Step 3 |
+| This package, `avoidance_sim` | The obstacle node, the pilot, the RViz tools, the tests | Step 3 |
+| `mesa-utils` | `glxinfo`, the renderer check | Step 1 |
+| `pyulog` (optional) | Reads PX4's flight logs; `pip install pyulog` | You, when needed ([data.md](data.md)) |
+
+A Raspberry Pi 5 on Ubuntu 24.04 arm64 is untested; notes at the end.
+Raspberry Pi OS and other Debian systems cannot run this: there are no ROS 2
+Jazzy packages for them.
+
+## Step 0: Ubuntu 24.04
+
+Pick one route. WSL is the tested one and the right default on Windows.
+
+### On Windows, with WSL2 (tested)
+
+In PowerShell, as administrator:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+Restart if it asks, then open "Ubuntu 24.04" from the Start menu and create
+a user. WSL needs Windows 10 version 2004 or later, or Windows 11, with
+virtualisation enabled in the BIOS. Update your GPU driver from the vendor
+first: WSL reaches the GPU through the Windows driver, and without it Gazebo
+falls back to software rendering. Inside Ubuntu, `sudo apt update` before
+step 1. Source: Microsoft, "Install WSL",
+https://learn.microsoft.com/windows/wsl/install.
+
+### On a PC of its own, natively (untested here)
+
+Download the Ubuntu 24.04 LTS Desktop image from
+https://ubuntu.com/download/desktop, write it to a USB stick with balenaEtcher
+or Rufus, boot from it and install. Install the GPU vendor's driver from
+"Additional Drivers" afterwards. Nothing in this stack is WSL-specific, so
+this route should be the simplest; nobody has run it yet.
+
+### In a virtual machine on Windows (tested, with limits)
+
+VMware Workstation Pro, free for personal use, with the Ubuntu 24.04 Desktop
+image above. Give the VM 6 processors, 8 GB of memory, 40 GB of disk, and tick
+"Accelerate 3D graphics". Measured: everything installs and flies, but the
+virtual GPU renders the depth camera at about 2 Hz, so avoidance is not
+reliable in a VM. Use it to learn the stack; take avoidance numbers from WSL or
+native Ubuntu. Two VMware-specific lines follow in step 2.
+
+Check, whichever route: in an Ubuntu terminal, `lsb_release -d` prints
+`Ubuntu 24.04` and `nproc` prints at least 4.
 
 PX4 has its own setup script and this repository does not wrap it. It is a
 firmware build with a toolchain installer that changes your groups and your
@@ -145,7 +200,7 @@ Measured: 18 minutes, peak 1.4 GB.
 Check: the script's own final lines, which end with a renderer check and the
 run commands. If it says `software rendering`, go back to the end of step 1.
 
-## Step 4: the camera patch (optional, recommended)
+## Step 4: the camera patch
 
 ```bash
 cd ~/PX4-Autopilot/Tools/simulation/gz
@@ -153,9 +208,13 @@ git apply ~/px4-gazebo-avoidance/patches/px4-camera-res.patch
 ```
 
 This drops the simulated depth camera from 640x480 at 30 Hz to 320x240 at
-15 Hz. Every measurement in this repository was taken with it applied, and on
-a slower machine it is the difference between a usable frame rate and not. It
-applies inside the submodule, not at the PX4 root, and leaves it dirty.
+15 Hz. Every measurement in this repository was taken with it applied, so
+without it your numbers will not match the README, and on a slower machine it
+is the difference between a usable frame rate and not. It applies inside the
+submodule, not at the PX4 root, and leaves it dirty.
+
+Check: `git -C ~/PX4-Autopilot/Tools/simulation/gz diff --stat` lists
+`models/OakD-Lite/model.sdf`.
 
 ## Run it
 
@@ -235,7 +294,6 @@ RViz is up with the aircraft, the walls and a green goal ball. Go to
 | Ubuntu 24.04 in VMware Workstation 17 on Windows | Tested for install and run, 6 cores and 8 GB: every step passes with the two VMware lines below, the aircraft flies and holds headings. Avoidance not validated: the virtual GPU renders the depth camera at 2 Hz. See below |
 | Raspberry Pi 5, Ubuntu 24.04 arm64 | Untested. See below |
 | Raspberry Pi OS | No. No ROS 2 Jazzy packages exist for Debian |
-| macOS, Apple Silicon or Intel | Untested. Through an Ubuntu 24.04 arm64 VM with GPU acceleration; see below |
 
 On a Pi 5 the known obstacle is the renderer. The Pi's Mesa V3D driver is
 reported to cap desktop OpenGL at 3.1, and Gazebo's default `ogre2` backend
@@ -250,39 +308,6 @@ PX4_GZ_SIM_RENDER_ENGINE=ogre PX4_GZ_WORLD=walls make px4_sitl gz_x500_depth
 Expect the builds to take far longer than the figures above and to risk the
 out-of-memory killer. Nobody has confirmed any of this on a Pi yet; if you do,
 the numbers belong in this file.
-
-### macOS
-
-Nothing here runs natively on macOS. ROS 2 Jazzy lists macOS as Tier 3,
-source build only, on both Intel and Apple Silicon (REP 2000), and this stack
-needs Nav2, Gazebo and PX4's bridge on top of that. The route is a virtual
-machine running Ubuntu 24.04 arm64, which is a Tier 1 ROS 2 platform with
-binary packages, and for which Gazebo Harmonic's apt repository also carries
-arm64 builds (its noble Release file lists `amd64 arm64 armhf`). Untested
-here: the first person to do it should run `scripts/report.sh` afterwards and
-send the output, and the numbers belong in this file.
-
-Give the VM at least 6 cores, 8 GB of memory and 30 GB of disk, and switch on
-its GPU acceleration. Four cores was marginal for flight in the clean-clone
-test, and 8 GB for the VM means a 16 GB Mac. UTM is free and its Ubuntu guide
-installs the "Ubuntu Server for ARM" image and then `sudo apt install
-ubuntu-desktop`; Parallels and VMware Fusion are alternatives. None of the
-three has been tried with this stack.
-
-Before step 1, check the one thing that decides whether the hour of builds is
-worth it:
-
-```bash
-sudo apt install -y mesa-utils && glxinfo -B | grep renderer
-```
-
-If it says `llvmpipe`, the VM has no GPU acceleration and the simulation
-would run at a thirtieth of real time; fix the VM's display settings first.
-Then follow steps 1 to 4 as written, with two arm64 differences: step 2's
-setup script needs `--no-nuttx`, and `GALLIUM_DRIVER` must not be set, since
-that variable is WSL's and nothing else's. If the hypervisor is VMware Fusion,
-step 2's `SVGA_VGPU10` note applies: PX4's setup script writes that line on
-any VMware guest.
 
 ## When it goes wrong
 
