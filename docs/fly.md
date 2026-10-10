@@ -21,8 +21,7 @@ a GUI to the running server without a restart.
 ![Gazebo: the x500 quadrotor with its depth camera, hovering by the wall](img/gazebo.png)
 
 One display ships switched off: the local costmap. On the development
-machine, enabling it crashed RViz through an OGRE shader fault in the Map
-display. Tick it on in Displays if your driver copes; the scan and plan
+machine, enabling it crashed RViz with a render crash in the Map display. Tick it on in Displays if your driver copes; the scan and plan
 displays tell the same story without it.
 
 ## Brake mode: fly on sticks, PX4 brakes
@@ -53,6 +52,11 @@ The first flight, in order:
 3. Drag the green ball somewhere a few metres away and a few metres up,
    right-click it, `FLY HERE (avoidance ON)`.
 
+It worked if the blue box lifts within a couple of seconds, climbs and flies
+to the ball, and terminal 2 prints `arrived:` with the remaining error, under
+0.6 m horizontally. The pilot's full stick is about 5 m/s, so a goal 10 m
+away takes a few seconds once it has climbed.
+
 Arm before you set a goal. PX4 refuses to arm while the throttle stick is
 above centre, and a goal the aircraft has not reached holds it there. If
 arming is denied with `throttle above center`, `STOP` on the green ball
@@ -60,19 +64,25 @@ releases the pilot; then arm. Do not use `TAKEOFF` while a goal is active
 either: the pilot's stick stream overrides the automatic takeoff.
 
 Now fly it at a wall. Drag the goal to the far side of one, set the ring so
-the aircraft faces the wall, and go. It stops about 2 m short. Measured:
-1.98, 2.05 and 2.60 m at `CP_DIST 2.0`, so treat the setpoint as approximate.
-PX4 measures the distance to the sensor, not to the propeller tips.
+the aircraft faces the wall, and go. It stops about 2 m short. The README's
+status table has the measured closest approaches at `CP_DIST 2.0`, between
+1.97 and 2.60 m over eight runs, so treat the setpoint as approximate. PX4
+measures the distance to the sensor, not to the propeller tips.
 
 The heading matters. The camera sees a 73 degree arc, and PX4 is set to move
 into directions it has no data for (`CP_GO_NO_DATA 1`), because otherwise it
 would refuse to move sideways or backwards at all. So point the aircraft
 where it is going: fly at a wall backwards and nothing brakes.
 
-Two things PX4 does on its own that look like faults. With `CP_DIST` set, it
-forces Loiter if the obstacle stream stops for five seconds, so stopping the
-ROS side mid-flight changes the aircraft's mode. And after a landing it
-disarms by itself after two seconds.
+Three things PX4 does on its own that look like faults. With the goal still
+behind the wall, the aircraft brakes at about 2 m and then slides sideways
+along the face toward open space, about 3 m in 14 s measured. Given long
+enough, it finds the wall's end and goes round. That is collision prevention
+steering the push toward free space (`CP_GUIDE_ANG`, 30 degrees), not a
+failure; `STOP` on the green ball ends it. With `CP_DIST` set, PX4 forces
+Loiter (its hold-position mode) if the obstacle stream stops for five
+seconds, so stopping the ROS side mid-flight changes the aircraft's mode. And
+after a landing it disarms by itself after two seconds.
 
 ## Plan mode: Nav2 plans, PX4 obeys
 
