@@ -24,7 +24,7 @@ To use the `px4-*` commands from a terminal that is not PX4's own console:
 export PATH="$HOME/PX4-Autopilot/build/px4_sitl_default/bin:$PATH"
 ```
 
-There are 91 of them. They are generated into the build directory, so nothing
+There are 90 of them. They are generated into the build directory, so nothing
 puts them on `PATH` for you.
 
 ## Run it
@@ -40,9 +40,9 @@ PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 |---|---|
 | `PX4_GZ_WORLD=walls` | Loads the world with the obstacle walls. Omit for an empty one |
 | `PX4_GZ_WORLD=pillars` | The second world, from this repository's `worlds/`, linked into PX4's tree by `scripts/link_assets.sh` |
-| `HEADLESS=1` | Suppresses the Gazebo GUI. Worth 10 to 45% of real-time factor. The server still renders the depth camera |
+| `HEADLESS=1` | Suppresses the Gazebo GUI, which buys back 10 to 45% of real-time factor. The server still renders the depth camera |
 | `gz_x500_depth` | The airframe. Plain `gz_x500` has no camera and will not work |
-| `PX4_GZ_SIM_RENDER_ENGINE=ogre` | Add this on a Raspberry Pi. Its driver caps desktop OpenGL at 3.1 and Gazebo's default renderer needs 3.3 |
+| `PX4_GZ_SIM_RENDER_ENGINE=ogre` | Add this on a Raspberry Pi, whose driver caps desktop OpenGL at 3.1 while Gazebo's default renderer needs 3.3, and in a VMware VM, where the default renderer produces no depth |
 
 This leaves you at a `pxh>` prompt. That prompt is PX4's own shell, not bash.
 
@@ -95,10 +95,11 @@ answers, and logs each one as `[px4_params]`. Nothing to type.
 | `NAV_DLL_ACT=0` | The x500 airframe defaults this to 2: refuse to arm until a ground station connects. There is no ground station here, so without it PX4 repeats `Preflight Fail: No connection to the GCS` and nothing you do in RViz will fly. Found on the first clean-machine install; the development machine had it saved from months before |
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
-| `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are honestly unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
+| `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are genuinely unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
 
-They persist in the PX4 build tree after the first run. To change one on a
-running PX4, type at `pxh>`:
+They persist in the PX4 build tree after the first run, in
+`rootfs/parameters.bson`, and survive a restart of PX4 (checked 2026-10-10). To
+change one on a running PX4, type at `pxh>`:
 
 ```
 param set CP_DIST 3.0
@@ -118,7 +119,7 @@ In RViz, on the green ball:
 | Drag the ring | Set the heading it will hold. The yellow arrow shows it |
 | Right-click, `FLY HERE (avoidance ON)` | Fly there with collision prevention active |
 | Right-click, `FLY HERE (direct, NO avoidance)` | PX4 reposition. Turns off the thing this repo is about |
-| Right-click, `STOP` | Release the pilot. Needed before arming |
+| Right-click, `STOP` | Release the pilot. Needed before arming if a goal is active |
 
 On the orange ball above the aircraft: `ARM`, `TAKEOFF`, `LAND`, `DISARM`,
 `DISARM (FORCE, in air)`, and the two mode entries below.
@@ -139,12 +140,12 @@ On this machine, enabling it makes RViz log
     active samplers with a different type refer to the same texture image unit
 
 and the first time, that killed RViz outright rather than just failing to
-draw. It is an OGRE shader problem in RViz's Map display, not something this
-package can fix, and it appears to be driver dependent.
+draw. It is a render crash in RViz's Map display, not something this package
+can fix, and it appears to be driver dependent.
 
 Tick it on in the Displays panel if you want the costmap and your driver
 copes. The `scan (what Nav2 sees)` and `Nav2 plan` displays have no such
-problem and are on by default, and between them they show the same story: the
+problem and are on by default. Between them they show the same story: the
 orange points are what the camera observed, the green line is the route the
 planner chose through it.
 
@@ -154,9 +155,14 @@ Avoidance belongs to exactly one layer at a time. From the orange ball's menu,
 or on the command line:
 
 ```bash
-ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: brake}"
-ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}"
+ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: brake}" \n    --qos-reliability reliable --qos-durability transient_local
+ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}" \n    --qos-reliability reliable --qos-durability transient_local
 ```
+
+The two flags are not optional. The pilot subscribes with reliable,
+transient-local QoS so it hears the current mode even if it starts late, and
+a publisher without them is incompatible: measured 2026-10-10, the command
+without them never completes and the mode does not change.
 
 | Mode | PX4 flight mode | Who avoids |
 |---|---|---|
@@ -178,8 +184,11 @@ Then in RViz: right-click the orange ball, **MODE: plan**. Confirm it took:
 ros2 topic echo /fmu/out/vehicle_status_v1 --once | grep nav_state   # 14
 ```
 
-Set the goal with RViz's **2D Goal Pose** tool (the toolbar button, not the
-green ball). In plan mode that goes to Nav2; the green ball is for brake mode.
+Set the goal with the **Nav2 Goal** tool in the toolbar, which sends Nav2's
+navigate-to-pose action directly. RViz's **2D Goal Pose** tool also works in
+plan mode: the goal bridge forwards it to Nav2. In brake mode the same tool
+sends a PX4 reposition instead, and Nav2 does not hear it. The green ball is
+for brake mode.
 The green line is the planned path, the orange points are what the camera has
 seen. Measured on the walls world: a goal 5.5 m behind a 10 m wall, reached in
 43 s round the shorter end.
@@ -199,7 +208,7 @@ to brake by itself if you give it a green-ball goal while in plan mode.
 ## Looking at what is happening
 
 ```bash
-ros2 node list                                   # 7 nodes for the base stack, 8 with the bridge
+ros2 node list                                   # 8 for the base stack, 9 with RViz, 21 with Nav2
 ros2 topic hz /fmu/out/vehicle_local_position_v1 # about 50 Hz. If silent, the agent is down
 ros2 topic hz /depth_camera/points               # the depth cloud, about 12 Hz
 ros2 topic hz /scan                              # the 2D scan Nav2 consumes
@@ -237,12 +246,14 @@ python3 test/xy_threshold.py     # same for the lateral stick, plus the velocity
 python3 test/hold_test.py        # does the aircraft hold heading when left alone
 python3 test/twist_check.py      # is /odom's twist really in base_link FLU
 python3 test/nav2_flight.py      # does Nav2 route around a wall
+python3 test/template_measure.py # the skeleton for a new measurement; copy it
 ```
 
-Two things to know before trusting any result. **Start position matters**: a
-run that begins outside the test area measures nothing, which these scripts
-have done. And **nothing else should be driving the aircraft**: if someone is
-clicking in RViz while a script runs, the two fight over the same goal topic.
+Two things to know before trusting any result. **Start position matters** for
+the single-purpose scripts: a run that begins outside the test area measures
+nothing. The gate's two halves position the aircraft themselves. And
+**nothing else should be driving the aircraft**: if someone is clicking in
+RViz while a script runs, the two fight over the same goal topic.
 
 Run the gate after any change to the pilot, the frames, the obstacle node or
 the Nav2 configuration. If a number moves, the change did something it was not
@@ -253,12 +264,16 @@ meant to. `test/README.md` has the full table.
 ```bash
 ls ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*/   # PX4's own flight logs; 6 GB per long armed session
 ulog_info file.ulg                                        # pip install pyulog; ulog2csv -m obstacle_distance file.ulg
+python3 scripts/ulog_timeline.py file.ulg                 # a run printed from PX4's log, every few seconds
 scripts/record.sh NAME [--cloud] [--lidar]                # rosbag2 of the run; the cloud is 21.7 MB/s
 ros2 bag play NAME --topics /clock /depth_camera/points   # replay into a standalone obstacle node, no simulator
 ros2 topic pub --once /avoidance_sim/pilot_goal geometry_msgs/msg/PoseStamped \
     "{header: {frame_id: odom}, pose: {position: {x: 2.0, y: 0.0, z: 7.0}}}"   # x east, y north, z up
-px4-failure gps off                                       # PX4 failure injection; px4-failure help lists the rest
 ```
+
+PX4's `failure` command is not listed: with Gazebo Harmonic at PX4 v1.17.0 it
+times out and nothing fails. [docs/data.md](docs/data.md) has the ROS-side
+substitutes.
 
 [docs/data.md](docs/data.md) has the input topics, the sensors file, and the
 conditions (spawn pose, speed, wind, battery, a sensor that stops).
@@ -282,8 +297,11 @@ That last check matters. A surviving Gazebo server means the restarted PX4
 reattaches to the old degraded world instead of a fresh one, which looks like
 the restart did nothing.
 
-Then restart terminal 1, and re-set the parameters, because they do not
-survive a restart.
+Then restart terminal 1. The parameters survive, and the ROS side can stay
+up. Gazebo's clock starts again from zero, and the TF publisher resets its
+schedule when time goes backwards, so Nav2 finds the aircraft again at once.
+Checked 2026-10-10; before that fix Nav2 stayed blind until the new clock
+passed the old one.
 
 Other specific failures:
 

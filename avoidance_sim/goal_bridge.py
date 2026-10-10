@@ -38,10 +38,13 @@ class GoalBridge(Node):
         super().__init__('rviz_goal_bridge',
                          start_parameter_services=False)  # see rviz_bridge.py
         self.home = None
-        # /goal_pose is shared with Nav2's navigator: RViz's 2D Goal Pose tool
-        # publishes it and both of us hear it. In plan mode Nav2 owns that
-        # goal, and the reposition this node would send switches PX4 into an
-        # auto mode, which throws it out of Offboard mid-plan. So step aside.
+        # This node owns /goal_pose, RViz's 2D Goal Pose tool. Nav2's navigator
+        # used to subscribe to it too, so in brake mode one click both sent a
+        # reposition and started a Nav2 navigation (measured 2026-10-10).
+        # nav2.launch.py now remaps the navigator to /avoidance_sim/nav2_goal_pose,
+        # and this node decides by mode: in brake mode a PX4 reposition, in
+        # plan mode a forward to Nav2. The reposition must never be sent in
+        # plan mode: it switches PX4 into an auto mode and out of Offboard.
         self.mode = 'brake'
         self.create_subscription(String, '/avoidance_sim/mode',
                                  lambda m: setattr(self, 'mode', m.data.strip().lower()),
@@ -57,6 +60,8 @@ class GoalBridge(Node):
                                  '/fmu/out/vehicle_local_position_v1',
                                  self.on_local, PX4_QOS)
         self.create_subscription(PoseStamped, '/goal_pose', self.on_goal, 10)
+        self.to_nav2 = self.create_publisher(PoseStamped,
+                                             '/avoidance_sim/nav2_goal_pose', 10)
         self.cmd = self.create_publisher(VehicleCommand,
                                          '/fmu/in/vehicle_command', PX4_QOS)
         self.mk = self.create_publisher(Marker, '/goal_marker', 10)
@@ -74,9 +79,10 @@ class GoalBridge(Node):
 
     def on_goal(self, msg: PoseStamped):
         if self.mode == 'plan':
+            self.to_nav2.publish(msg)
             self.get_logger().info(
-                '2D Goal Pose in PLAN mode: leaving it to Nav2, not sending a '
-                'reposition (that would throw PX4 out of Offboard)')
+                '2D Goal Pose in PLAN mode: forwarded to Nav2, no reposition '
+                '(that would throw PX4 out of Offboard)')
             return
         if self.home is None:
             self.get_logger().warn(

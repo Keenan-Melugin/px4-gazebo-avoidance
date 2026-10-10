@@ -165,9 +165,16 @@ def generate_launch_description():
              name='planner_server', parameters=[params], output='screen'),
         Node(package='nav2_behaviors', executable='behavior_server',
              name='behavior_server', parameters=[params], output='screen'),
+        # The navigator's goal_pose subscription is moved off RViz's
+        # /goal_pose. Both used to hear the 2D Goal Pose tool, so in brake
+        # mode one click sent PX4 a reposition AND started a Nav2 navigation
+        # (measured 2026-10-10). Now rviz_goal_bridge owns /goal_pose and
+        # forwards it here only in plan mode. The Nav2 Goal tool is not
+        # affected: it sends the navigate_to_pose action directly.
         Node(package='nav2_bt_navigator', executable='bt_navigator',
              name='bt_navigator',
              parameters=[params, {'default_nav_to_pose_bt_xml': bt_xml}],
+             remappings=[('goal_pose', '/avoidance_sim/nav2_goal_pose')],
              output='screen'),
         Node(package='nav2_velocity_smoother', executable='velocity_smoother',
              name='velocity_smoother', parameters=[params],

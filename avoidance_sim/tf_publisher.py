@@ -144,6 +144,12 @@ class TfPublisher(Node):
         # 30 Hz out of a 100 Hz input. Decided on time, not on message count,
         # so it stays 30 Hz if PX4's rate changes.
         now_s = self.get_clock().now().nanoseconds * 1e-9
+        # Simulation time goes backwards when Gazebo restarts under a running
+        # ROS side. Without this reset the next slot stays at the old time and
+        # the transform stops until the new clock catches up: measured
+        # 2026-10-10, clock 153 s -> 21 s, Nav2 blind for over 90 s.
+        if now_s < self.next_pub - 1.0:
+            self.next_pub = now_s
         if now_s < self.next_pub:
             return
         # Schedule the next slot rather than gate on "a period since the last

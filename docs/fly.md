@@ -121,9 +121,9 @@ the altitude it had when plan mode began.
 
 `MODE: brake` hands control back to the green ball. Giving the green ball a
 goal while in plan mode switches to brake by itself, because a stick goal
-means fly it on sticks. In plan mode the green ball is otherwise ignored, and
-so is RViz's flat `2D Goal Pose` tool, because the reposition it would send
-throws PX4 out of Offboard.
+means fly it on sticks. RViz's flat `2D Goal Pose` tool depends on the mode:
+in brake mode it sends PX4 a reposition, in plan mode the goal bridge forwards
+it to Nav2 instead, because a reposition would throw PX4 out of Offboard.
 
 Why two modes rather than both at once is in
 [how-it-works.md](how-it-works.md): collision prevention vetoes a planner.
