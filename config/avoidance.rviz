@@ -51,8 +51,8 @@ Visualization Manager:
     Decay Time: 0
     Position Transformer: XYZ
   - Class: rviz_default_plugins/LaserScan
-    Name: LidarScan
-    Enabled: true
+    Name: lidar scan (off by default, turn on with lidar:=true)
+    Enabled: false
     Topic:
       Value: /lidar
       Depth: 5
