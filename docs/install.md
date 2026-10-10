@@ -154,7 +154,7 @@ sed -i '/SVGA_VGPU10/d' ~/.profile
 The second VMware line comes at run time: start PX4 with
 `PX4_GZ_SIM_RENDER_ENGINE=ogre`. Gazebo's default renderer on VMware's virtual
 GPU produces a depth image with no finite points at all (0 of 76,800,
-measured), which the obstacle node now reports as a dead camera; the older
+measured), which the obstacle node reports as a dead camera. The older
 `ogre` renderer gives correct depth, at about 2 Hz. That rate is the limit of
 a VM here: at full stick the aircraft covers 5 m between frames, so expect
 braking to be late or absent. Use the VM to install, fly and learn the
