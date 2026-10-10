@@ -74,6 +74,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription)
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -121,9 +122,13 @@ def generate_launch_description():
             'bridge_extra', default_value='',
             description='Passed through: extra Gazebo-to-ROS bridge specs.'),
 
+        # Only when base:=true. The argument was declared and documented but
+        # not wired, so base:=false still started a second agent, a second
+        # RViz and a second software pilot streaming sticks into PX4.
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(share, 'launch', 'sim.launch.py')),
+            condition=IfCondition(LaunchConfiguration('base')),
             launch_arguments={
                 'rviz': LaunchConfiguration('rviz'),
                 'agent': LaunchConfiguration('agent'),

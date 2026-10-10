@@ -46,11 +46,18 @@ other than the origin, in metres and radians, missing values zero.
 
 ## What the gate assumes about a world
 
-Its brake half flies east from wherever the aircraft is and looks for the
-first box face on that line, at that altitude. So a world needs a wall east
-of the working area, long enough to be found from anywhere the plan half
-parks the aircraft; that is why `wall_east` is 26 m. If there is none the
-test says so and does not fly.
+Its brake half needs one wall to brake at: a box that is not yawed, at
+least 8 m long north-south, standing at the 7 m test altitude, approached
+flying east onto its west face. It takes the wall straight east of the
+aircraft if there is one, otherwise the nearest qualifying wall anywhere. On
+that wall it needs a line 4 m inside both ends whose 8 m run-up point is
+2.5 m clear of every box, and whose run to the face passes 2.5 m clear of
+every other box. It flies there by a route round the other boxes. If no
+wall qualifies, or the route fails, it says so and does not measure.
+
+Only plain `<box>` models are read. A world with included models or meshes
+is refused by the measurement scripts, because routes planned without those
+obstacles would fly through them.
 
 It backs off to 8 m from the face for a run-up, pushes, and reads the
 closest approach, stopping the push once the aircraft has stood still for

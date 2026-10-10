@@ -83,9 +83,11 @@ For path planning instead, which includes everything above:
 ros2 launch avoidance_sim nav2.launch.py
 ```
 
-Adds `base:=false` if the base stack is already running.
+Add `base:=false` if the base stack is already running; without it this
+launch starts the base stack itself, and a second copy collides with the
+first on UDP 8888.
 
-### The four parameters
+### The five parameters
 
 The launch sets these through PX4's own `px4-param` client as soon as PX4
 answers, and logs each one as `[px4_params]`. Nothing to type.
@@ -95,6 +97,7 @@ answers, and logs each one as `[px4_params]`. Nothing to type.
 | `NAV_DLL_ACT=0` | The x500 airframe defaults this to 2: refuse to arm until a ground station connects. There is no ground station here, so without it PX4 repeats `Preflight Fail: No connection to the GCS` and nothing you do in RViz will fly. Found on the first clean-machine install; the development machine had it saved from months before |
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
+| `COM_RC_OVERRIDE=0` | Stick override off. The software pilot is the only stick source, and PX4 counted its own stick changes as a pilot taking over, which cancelled a Land |
 | `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are genuinely unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
 
 > These values are for the simulator only. Three of them switch off a
@@ -102,7 +105,9 @@ answers, and logs each one as `[px4_params]`. Nothing to type.
 > any real flight.
 
 They persist in the PX4 build tree after the first run, in
-`rootfs/parameters.bson`, and survive a restart of PX4 (checked 2026-10-10). To
+`rootfs/parameters.bson`, and survive a restart of PX4 (checked 2026-10-10),
+until the next launch re-applies its `px4_params` (`CP_DIST=2.0` among
+them) unless you pass your own. To
 change one on a running PX4, type at `pxh>`:
 
 ```
@@ -219,7 +224,7 @@ ros2 topic hz /fmu/out/vehicle_local_position_v1 # about 50 Hz. If silent, the a
 ros2 topic hz /depth_camera/points               # the depth cloud, 6 to 12 Hz
 ros2 topic hz /scan                              # the 2D scan Nav2 consumes
 ros2 topic echo /fmu/out/vehicle_status_v1 --once | grep nav_state
-gz topic -e -t /world/walls/stats                # real_time_factor. Want 0.9 or better
+gz topic -e -t /world/<world>/stats              # e.g. /world/walls/stats; real_time_factor, want 0.9 or better
 ```
 
 From a terminal with the PX4 `bin` on `PATH`:
@@ -237,7 +242,9 @@ is empty, perception is not reaching PX4 and nothing downstream can work.
 ## Measuring it
 
 Every script below except the first two needs the stack running and flies
-the aircraft. They are measurements, not unit tests.
+the aircraft. They are measurements, not unit tests. Run every script from the repository root (`cd ~/px4-gazebo-avoidance`) in a
+terminal with the workspace sourced. Scripts that set PX4 parameters find
+`px4-param` on `PATH` or under `PX4_ROOT` (default `~/PX4-Autopilot`).
 
 ```bash
 python3 test/histogram_selftest.py   # the obstacle node alone, no simulator, two seconds
@@ -246,6 +253,10 @@ python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, 
 python3 test/gate.py --world pillars   # the same gate in the second world
 python3 test/regression.py       # brake mode: heading hold and the standoff, exit code counts failures
 python3 test/mode_test.py        # the brake/plan toggle, both directions
+python3 test/yaw_test.py         # four headings held, and a position-only goal leaves heading alone
+python3 test/ned_check.py        # plan mode's body-to-NED velocity conversion, three directions
+python3 test/velmode_ab.py       # commanded against achieved speed, collision prevention on and off
+python3 test/land_test.py        # a Land stands while the pilot flies a goal; brake takes over
 python3 test/yaw_threshold.py    # sweeps the yaw stick to find its dead band
 python3 test/xy_threshold.py     # same for the lateral stick, plus the velocity slope
 python3 test/hold_test.py        # does the aircraft hold heading when left alone
@@ -254,9 +265,10 @@ python3 test/nav2_flight.py      # does Nav2 route around a wall
 python3 test/template_measure.py # the skeleton for a new measurement; copy it
 ```
 
-Two things to know before trusting any result. **Start position matters** for
-the single-purpose scripts: a run that begins outside the test area measures
-nothing. The gate's two halves position the aircraft themselves. And
+Two things to know before trusting any result. Every flying script positions
+the aircraft itself, by a route round the world's boxes, and leaves the pilot
+in brake mode with any Nav2 goal cancelled (`guarded()` in
+`test/regression.py`), so the start position does not matter. And
 **nothing else should be driving the aircraft**: if someone is clicking in
 RViz while a script runs, the two fight over the same goal topic.
 

@@ -83,15 +83,17 @@ failure; `STOP` on the green ball ends it. With `CP_DIST` set, PX4 forces
 Loiter (its hold-position mode) if the obstacle stream stops for five
 seconds, so stopping the ROS side mid-flight changes the aircraft's mode.
 The pilot does not take it back, because Loiter, Land and Return can be a
-safety decision; `MODE: brake` on the orange ball asks for Position mode
-again. And
+safety decision: it stops flying, holds its sticks still so PX4's stick
+override does not end that mode, and refuses goals while PX4 lands or
+returns. `MODE: brake` on the orange ball takes over again. And
 after a landing it disarms by itself after two seconds.
 
 ## Plan mode: Nav2 plans, PX4 obeys
 
-Stop the base stack first (Ctrl-C in its terminal), then start the Nav2
-launch instead. It starts the base stack itself, and two of them collide on
-the agent's UDP port 8888:
+Start the Nav2 launch instead of the base stack: stop the base stack first
+(Ctrl-C in its terminal), because this launch starts it itself and two
+copies collide on the agent's UDP port 8888. Or keep the base stack running
+and add `base:=false`:
 
 ```bash
 ros2 launch avoidance_sim nav2.launch.py
@@ -138,7 +140,7 @@ Why two modes rather than both at once is in
 ```bash
 ros2 topic hz /fmu/out/vehicle_local_position_v1   # about 50 Hz. Silent means the agent is down
 ros2 topic hz /depth_camera/points                 # 6 to 12 Hz
-gz topic -e -t /world/walls/stats                  # real_time_factor, want 0.9 or better
+gz topic -e -t /world/<world>/stats                # e.g. /world/walls/stats; real_time_factor, want 0.9 or better
 px4-listener obstacle_distance                     # the 72-bin histogram PX4 receives
 px4-commander status                               # arming state and flight mode
 ```

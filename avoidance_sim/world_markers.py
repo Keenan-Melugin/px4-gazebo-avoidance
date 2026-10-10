@@ -1,7 +1,7 @@
 """Draws the world's obstacles in RViz by reading the Gazebo world file.
 
 Split out of a single-file prototype. The behaviour here is measured, not
-assumed; see the repository README for the numbers and the traps.
+assumed; see docs/how-it-works.md for the numbers and the traps.
 """
 
 

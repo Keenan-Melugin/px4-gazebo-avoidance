@@ -14,7 +14,7 @@
 #     https://github.com/gazebosim/ros_gz/blob/jazzy/README.md
 #
 # Safe to rerun: each step is skipped when its result is already present.
-# It does not install PX4 (README, Install, step 2) or this package
+# It does not install PX4 (docs/install.md, step 2) or this package
 # (scripts/install.sh).
 set -euo pipefail
 
@@ -164,7 +164,7 @@ say "Done"
 cat <<EOF
   The ROS 2 and Gazebo layer is installed. Next:
 
-    1. PX4 v1.17.0, which has its own setup script: README, Install, step 2.
+    1. PX4 v1.17.0, which has its own setup script: docs/install.md, step 2.
     2. ./scripts/install.sh, for the agent, px4_msgs and this package.
 
   Every new terminal needs:

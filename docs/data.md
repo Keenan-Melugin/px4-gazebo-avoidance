@@ -210,13 +210,14 @@ topic bridged, in `bridge_extra`, in the bridge's own syntax
 ### PX4 parameters
 
 Three ways, in order of persistence. At start,
-`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1"` (simulator
+`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1 COM_RC_OVERRIDE=0"` (simulator
 values; see [hardware.md](hardware.md) before any real flight) on the
 launch (the launch applies them through `px4-param` once PX4 answers, which
 is the only route that reaches every parameter; `scripts/px4_params.sh`
 says why). While running, `px4-param set CP_DIST 3.0`, or `param set` at the
 `pxh>` prompt, PX4's own shell in terminal 1. Either one keeps the value
-across restarts with no `param save`: PX4 writes every change to
+across restarts of PX4 with no `param save`, until the next launch
+re-applies its own `px4_params` unless you pass yours: PX4 writes every change to
 `build/px4_sitl_default/rootfs/parameters.bson` (PX4's binary parameter file), which the next start
 loads, and which is how the development machine came to differ from a fresh
 install for months. `PX4_PARAM_NAME=value` in PX4's environment is applied
@@ -224,8 +225,9 @@ before the airframe file, so it cannot set a value the airframe file sets.
 
 ### Node parameters
 
-The obstacle node answers `ros2 param set
-/obstacle_distance_publisher stale_s 2.0` and `ros2 param dump`. The six
+The obstacle node answers `ros2 param get` and `ros2 param dump`. It reads
+its values once at start, so `ros2 param set` is accepted and changes
+nothing until a restart; pass them with `sensors:=file.yaml`. The six
 nodes inside `rviz_bridge` do not: they start without parameter services, a
 measured CPU saving ([how-it-works.md](how-it-works.md)), so their values
 are launch-time only.
@@ -277,8 +279,11 @@ standard deviation. The obstacle node's own filters are its parameters:
 
 `kill -STOP $(pgrep -f parameter_bridge)` freezes
 the bridge: the STOP signal pauses a process without ending it, and
-`pgrep -f` finds its process number by name. Then after `stale_s` the node drops the camera, publishes nothing,
-and PX4 holds on its own 0.5 s timeout (`kill -CONT` resumes). That is the
+`pgrep -f` finds its process number by name. Then after `stale_s` (1.0 s)
+the node drops the camera and publishes nothing. PX4 treats the stream as
+gone 0.5 s after the last message and refuses motion toward the directions
+it had seen; after 5 s it switches to Loiter (`kill -CONT` resumes the
+bridge, and `MODE: brake` takes Position mode back). That is the
 dead-camera behaviour the VM run forced, available on demand.
 
 ### Battery

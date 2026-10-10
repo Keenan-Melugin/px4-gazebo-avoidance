@@ -1,7 +1,7 @@
 """Flies to a goal by streaming synthetic manual control, which is what keeps collision prevention active.
 
 Split out of a single-file prototype. The behaviour here is measured, not
-assumed; see the repository README for the numbers and the traps.
+assumed; see docs/how-it-works.md for the numbers and the traps.
 """
 
 
@@ -10,6 +10,8 @@ import math
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped, Twist
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from px4_msgs.msg import (ManualControlSetpoint,
     ObstacleDistance,
@@ -138,12 +140,20 @@ class SoftwarePilot(Node):
     # mode. Requesting every 20 ms tick flooded the command topic.
     MODE_REQ_PERIOD = 1.0               # s
     # Plan mode has no PX4 collision prevention, so the planner's costmap is
-    # the only thing that sees obstacles. If the obstacle histogram stops
-    # (camera dead, obstacle node down), the costmap stops updating and Nav2
-    # would keep driving on its last picture. Plan mode therefore holds
-    # (zero velocity) when no histogram has arrived for this long. Same
-    # 0.5 s as the obstacle node's own stale timeout.
-    PLAN_SENSOR_TIMEOUT = 0.5           # s
+    # the only thing that sees obstacles, and it holds (zero velocity) when
+    # its picture stops updating. Two feeds are watched. Nav2's costmap reads
+    # /scan, flattened from the depth cloud by pointcloud_to_laserscan, so a
+    # dead converter freezes the costmap while the histogram stays fresh.
+    # And the obstacle histogram, which goes quiet when every sensor is dead
+    # (the obstacle node republishes for its stale_s, 1.0 s, then stops).
+    # 0.5 s matches PX4's own obstacle-stream timeout; /scan gets 1.0 s
+    # because a camera on a virtual GPU delivers 2 Hz.
+    PLAN_SENSOR_TIMEOUT = 0.5           # s, histogram
+    PLAN_SCAN_TIMEOUT = 1.0             # s, /scan, once it has been seen
+    # PX4 states in which it is bringing the aircraft down or home: return,
+    # descend, termination, land. A goal is refused in these; taking over
+    # needs an explicit brake.
+    HANDS_OFF = (5, 12, 13, 18)
     DEADBAND = 0.4     # m
     ARRIVED = 0.6      # m
 
@@ -194,11 +204,23 @@ class SoftwarePilot(Node):
         self._last_offboard_req = -1e9
         self._last_tick_t = None
         self.offboard_since = None
-        # Last obstacle histogram, for the plan-mode dead-sensor hold.
+        # Last obstacle histogram and costmap scan, for the plan-mode hold.
         self.hist_t = None
+        self.scan_t = None
         self._hist_warned = False
         self.create_subscription(ObstacleDistance, '/fmu/in/obstacle_distance',
                                  self.on_hist, PX4_QOS)
+        self.create_subscription(LaserScan, '/scan', self.on_scan,
+                                 qos_profile_sensor_data)
+        # Set when PX4 leaves the pilot's mode for one somebody else chose
+        # (Land, Return, a failsafe, a ground station). The pilot then stops
+        # flying and holds its sticks exactly still: see yield_control().
+        self._yielded = False
+        self._sticks = (0.0, 0.0, 0.0, 0.0)   # last published roll, pitch, yaw, throttle
+        # The pilot announces its own mode changes, so the goal bridge and a
+        # late subscriber agree with it.
+        self.mode_pub = self.create_publisher(String, '/avoidance_sim/mode',
+                                              MODE_QOS)
         self.offboard_pub = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', PX4_QOS)
         self.traj_pub = self.create_publisher(
@@ -254,28 +276,58 @@ class SoftwarePilot(Node):
             self._want_posctl = False
         if self.nav == 14:              # NAVIGATION_STATE_OFFBOARD
             self._want_offboard = False
-        # Someone else chose an auto mode while a request was still pending:
-        # takeoff (17), land (18), return (5), descend (12), termination (13).
-        # Their choice wins over a request nobody has repeated since.
-        if (self.nav != prev and self.nav in (5, 12, 13, 17, 18)
-                and (self._want_posctl or self._want_offboard)):
+        if self.nav in (2, 14):
+            if self._yielded:
+                self._yielded = False
+                self.get_logger().info(
+                    f'PX4 back in {"Position" if self.nav == 2 else "Offboard"} '
+                    f'mode; pilot flying again')
+            return
+        if prev is None or self.nav == prev:
+            return
+        # PX4 entered a mode the pilot never asks for, so somebody else chose
+        # it: a person, a ground station, PX4's own collision prevention
+        # (Loiter after 5 s without obstacle data), a failsafe. Their choice
+        # wins over a request still pending.
+        if self._want_posctl or self._want_offboard:
             self._want_posctl = self._want_offboard = False
             self.get_logger().info(
                 f'PX4 entered nav_state {self.nav}; dropping the pending mode '
-                f'request. A goal or a mode command asks again.')
-        # Once PX4 has entered the mode, leaving it is PX4's or a human's
-        # decision (Land, RTL, a failsafe, a ground station). Say so once and
-        # do not fight it. Sending the mode again re-enters.
-        if prev in (2, 14) and self.nav != prev and self.nav is not None:
-            want = self.MODE_BRAKE if prev == 2 else self.MODE_PLAN
-            if self.mode == want:
-                self.get_logger().warn(
-                    f'PX4 left {"Position" if prev == 2 else "Offboard"} mode '
-                    f'(nav_state {self.nav}). Not asking for it back; publish '
-                    f'{want!r} on /avoidance_sim/mode to re-enter.')
+                f'request.')
+        if prev in (2, 14) or self.active or self.vel_mode:
+            self.yield_control(prev)
+
+    def yield_control(self, prev):
+        """Stop flying and hold the sticks still after PX4 left our mode.
+
+        Not asking for the mode back is not enough. COM_RC_OVERRIDE defaults
+        to 1, and Commander switches a multicopter from an automatic mode back
+        to Position mode whenever the selected stick source is moving
+        (Commander.cpp, manualControlCheck, PX4 v1.17.0), "moving" meaning a
+        filtered stick rate above COM_RC_STICK_OV. A pilot still flying its
+        goal changes its sticks every tick, so a Land lasted until the first
+        throttle step. Dropping the sticks to zero is itself a move, so they
+        are frozen at their last values instead; PX4 ignores their values in
+        an automatic mode.
+        """
+        self.active = False
+        self.goal = None
+        self.vel_mode = False
+        if not self._yielded:
+            self._yielded = True
+            mine = {2: 'Position', 14: 'Offboard'}.get(prev)
+            self.get_logger().warn(
+                f'PX4 is in nav_state {self.nav}'
+                + (f', having left {mine} mode' if mine else '')
+                + '. The pilot has stopped flying and holds its sticks still so '
+                f'PX4 keeps that mode. Publish {self.mode!r} on '
+                f'/avoidance_sim/mode to take over again.')
 
     def on_hist(self, _m):
         self.hist_t = self.now_s()
+
+    def on_scan(self, _m):
+        self.scan_t = self.now_s()
 
     def age_ok(self, t, limit):
         """True when time t is in the past and no older than limit.
@@ -306,6 +358,7 @@ class SoftwarePilot(Node):
         self.cmd_vel = None
         self.cmd_vel_t = 0.0
         self.hist_t = None
+        self.scan_t = None
         self.vel_mode = False
         self.hold_alt = None
         self.active = False
@@ -318,6 +371,11 @@ class SoftwarePilot(Node):
 
     def on_goal(self, msg: PoseStamped):
         """Goal arrives in ENU (RViz): x east, y north, z up."""
+        # STOP first: it only ends the pilot's own goal, so it never asks PX4
+        # for a mode, whatever mode either is in.
+        if msg.header.frame_id == "STOP":
+            self.stop()
+            return
         if self.mode == self.MODE_EXTERNAL:
             # A test script owns the sticks. Flying a goal would need the
             # stick stream this mode has handed over.
@@ -325,17 +383,28 @@ class SoftwarePilot(Node):
                 'pilot goal ignored: EXTERNAL mode, a test script owns the '
                 'sticks. Publish brake on /avoidance_sim/mode first.')
             return
+        if self.nav in self.HANDS_OFF:
+            # PX4 is landing or going home. A goal would ask for Position
+            # mode and cancel that; taking over has to be deliberate.
+            self.get_logger().warn(
+                f'pilot goal refused: PX4 is in nav_state {self.nav} (landing, '
+                f'returning or terminating). Publish brake on '
+                f'/avoidance_sim/mode to take over first.')
+            return
         if self.mode == self.MODE_PLAN:
             # A stick goal has only one meaning: fly it on sticks. Accepting
             # it in plan mode and then ignoring it left PX4 armed in Offboard
             # on the ground with nothing driving, and no message saying why.
+            # The switch is published, not only made: the goal bridge used to
+            # stay in plan mode and send the next 2D Goal Pose to Nav2, whose
+            # /cmd_vel then drove the stick path with collision prevention
+            # live, the combination measured deadlocking at 0.00 m/s.
             self.get_logger().info(
                 'pilot goal received in PLAN mode: switching to BRAKE, '
                 'because a pilot goal means fly it on sticks')
             self.on_mode(String(data=self.MODE_BRAKE))
-        if msg.header.frame_id == "STOP":
-            self.stop()
-            return
+            self.mode_pub.publish(String(data=self.MODE_BRAKE))
+        self._yielded = False
         self.goal = (msg.pose.position.y, msg.pose.position.x,
                      msg.pose.position.z)
 
@@ -370,6 +439,7 @@ class SoftwarePilot(Node):
         if want == self.mode:
             # Re-sending the current mode is how a user takes the mode back
             # after PX4 left it (Land, RTL, a failsafe). Nothing else changes.
+            self._yielded = False
             if want == self.MODE_BRAKE and self.nav != 2:
                 self.get_logger().info('brake re-sent: asking for Position mode')
                 self.request_posctl()
@@ -379,6 +449,7 @@ class SoftwarePilot(Node):
                 self.offboard_since = self.now_s()
             return
         self.mode = want
+        self._yielded = False
         self._want_posctl = False
         self._want_offboard = False
         if want == self.MODE_EXTERNAL:
@@ -465,16 +536,20 @@ class SoftwarePilot(Node):
 
         # No PX4 collision prevention in Offboard, so no obstacle data means
         # no horizontal motion. Altitude hold below still runs.
-        if fresh and not self.age_ok(self.hist_t, self.PLAN_SENSOR_TIMEOUT):
+        blind = (not self.age_ok(self.hist_t, self.PLAN_SENSOR_TIMEOUT)
+                 or (self.scan_t is not None
+                     and not self.age_ok(self.scan_t, self.PLAN_SCAN_TIMEOUT)))
+        if fresh and blind:
             vx = vy = wz = 0.0
             if not self._hist_warned:
                 self._hist_warned = True
                 self.get_logger().warn(
                     'PLAN mode: no obstacle histogram for '
-                    f'{self.PLAN_SENSOR_TIMEOUT:.1f} s (camera or obstacle node '
-                    'down). Holding position instead of flying on a frozen '
-                    'costmap.')
-        elif self._hist_warned and self.age_ok(self.hist_t, self.PLAN_SENSOR_TIMEOUT):
+                    f'{self.PLAN_SENSOR_TIMEOUT:.1f} s or no /scan for '
+                    f'{self.PLAN_SCAN_TIMEOUT:.1f} s (camera, obstacle node or '
+                    'cloud-to-scan converter down). Holding position instead '
+                    'of flying on a frozen costmap.')
+        elif self._hist_warned and not blind:
             self._hist_warned = False
             self.get_logger().info('PLAN mode: obstacle data back, Nav2 driving')
 
@@ -580,6 +655,12 @@ class SoftwarePilot(Node):
         # COM_RC_IN_MODE. The DDS bridge does not fill this in for you.
         m.data_source = ManualControlSetpoint.SOURCE_MAVLINK_0
         m.roll = m.pitch = m.yaw = m.throttle = 0.0
+
+        if self._yielded:
+            # Hold the last sticks exactly: no change, so no stick override.
+            m.roll, m.pitch, m.yaw, m.throttle = self._sticks
+            self.pub.publish(m)
+            return
 
         fresh = self.cmd_fresh()
 
@@ -720,6 +801,7 @@ class SoftwarePilot(Node):
                 self.active = False
 
         self.pub.publish(m)
+        self._sticks = (m.roll, m.pitch, m.yaw, m.throttle)
 
         # Keep asking for Position mode until PX4 is in it. One request on
         # the mode switch was not enough: if PX4 was still in Offboard and

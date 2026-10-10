@@ -4,8 +4,8 @@ Not built. The ROS side of this package is ordinary ROS 2 Jazzy, and Ubuntu
 24.04 on arm64 (the processor architecture of the Raspberry Pi and most
 companion computers) is a Tier 1 platform with binary packages. Tier 1 is
 ROS 2's top support level, defined in REP 2000, the ROS document that lists
-supported platforms per release. So it runs on a Raspberry Pi 5 as it runs
-here. The question is what crosses the network.
+supported platforms per release. So it should run on a Raspberry Pi 5;
+nobody has tried yet. The question is what crosses the network.
 
 ## Which side runs where
 
@@ -14,7 +14,9 @@ The agent is a DDS participant: PX4's topics appear on the domain for every
 machine on it, so nothing on the PX4 side changes (`UXRCE_DDS_AG_IP` stays at
 localhost). A DDS domain is a numbered group of machines that see each
 other's topics. The Pi runs the obstacle node, the pilot and, if wanted,
-Nav2, from the same launch files with `agent:=false`. The hook to write is a
+Nav2. Today's launch cannot be split that way: besides the agent it starts
+the Gazebo bridge and the `px4-param` step, which must stay with the
+simulator, so `agent:=false` alone is not enough. The hook to write is a
 `side:=sim|ros|all` argument that starts only one half.
 
 ## Discovery
@@ -50,8 +52,9 @@ further setup.
    the Pi loaded. PX4 declares RC loss after `COM_RC_LOSS_T` (0.5 s), and a
    stream that pauses drops the aircraft out of Position mode. That is the
    one safety property this design has.
-3. The Pi's CPU for the obstacle node and the pilot; here they cost a sixth
-   of a core together, on x86.
+3. The Pi's CPU for the obstacle node and the `rviz_bridge` process (the
+   pilot and five helpers); here the whole `rviz_bridge` process costs a
+   sixth of a core, on x86, and the obstacle node is measured separately.
 4. The camera-to-histogram latency.
 
 ## The real aircraft later
@@ -62,9 +65,11 @@ over a serial port, a direct wired data link
 TELEM2, the Pixhawk's second telemetry port, set up with PX4's
 `UXRCE_DDS_CFG` and with `MAV_1_CONFIG 0` so MAVLink, PX4's ground-station
 protocol, does not also claim the port. A human on a transmitter and this
-package's synthetic sticks cannot both be the only input. `COM_RC_IN_MODE`
-has modes for each and for both with one taking priority. Which one, and how
-the human takes over, is decided and tested on the bench before any flight.
+package's synthetic sticks compete for PX4's one stick input, and PX4 honours
+the transmitter's kill and mode switches only while the transmitter is the
+selected source: [../hardware.md](../hardware.md), item 2, has the details.
+Which one, and how the human takes over, is decided and tested on the bench
+before any flight.
 
 ## Sources
 

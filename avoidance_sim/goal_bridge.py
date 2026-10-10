@@ -1,7 +1,7 @@
 """Turns RViz's flat Goal Pose tool into a PX4 reposition (brake mode) or a Nav2 goal (plan mode).
 
 Split out of a single-file prototype. The behaviour here is measured, not
-assumed; see the repository README for the numbers and the traps.
+assumed; see docs/how-it-works.md for the numbers and the traps.
 """
 
 
@@ -47,8 +47,7 @@ class GoalBridge(Node):
         # plan mode a forward to Nav2. The reposition must never be sent in
         # plan mode: it switches PX4 into an auto mode and out of Offboard.
         self.mode = 'brake'
-        self.create_subscription(String, '/avoidance_sim/mode',
-                                 lambda m: setattr(self, 'mode', m.data.strip().lower()),
+        self.create_subscription(String, '/avoidance_sim/mode', self.on_mode,
                                  MODE_QOS)
         self.alt = None
         # Origin comes from VehicleLocalPosition.ref_lat/ref_lon, NOT from
@@ -68,6 +67,13 @@ class GoalBridge(Node):
         self.mk = self.create_publisher(Marker, '/goal_marker', 10)
         self.get_logger().info(
             'ready: use the "2D Goal Pose" button in RViz to fly somewhere')
+
+    def on_mode(self, m):
+        # Same names the pilot accepts. Storing any string made a typo act as
+        # brake here (a reposition) while the pilot stayed in plan.
+        want = (m.data or '').strip().lower()
+        if want in ('brake', 'plan', 'external'):
+            self.mode = want
 
     def on_local(self, m):
         if math.isfinite(m.z):

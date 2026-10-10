@@ -24,7 +24,9 @@ AGENT_VERSION=v2.4.3
 
 # Resolve our own location BEFORE anything changes directory.
 HERE="$(cd -P "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)"
-WS="${WS:-$HOME/av_ws}"
+# Resolved like HERE, so the inside-the-workspace test below compares like
+# with like through a symlinked home or workspace.
+WS="$(realpath -m "${WS:-$HOME/av_ws}")"
 AGENT_SRC="$HOME/Micro-XRCE-DDS-Agent"
 
 say()  { printf '\n=== %s ===\n' "$1"; }
@@ -57,7 +59,7 @@ This will write to:
   /usr/local                   the agent binary and library, using sudo
 
 It does NOT install ROS 2 or Gazebo (that is scripts/prereqs.sh), nor PX4
-$PX4_VERSION (README, Install, step 2).
+$PX4_VERSION (docs/install.md, step 2).
 EOF
 
 # ---------------------------------------------------------------- preflight
@@ -168,6 +170,17 @@ mkdir -p "$WS/src"
 if [ ! -d "$WS/src/px4_msgs" ]; then
   git clone -b "$MSGS_BRANCH" --depth 1 \
     https://github.com/PX4/px4_msgs.git "$WS/src/px4_msgs"
+else
+  # A workspace reused from another project may hold another branch, whose
+  # messages do not match PX4 $PX4_VERSION and fail without an error.
+  have=$(git -C "$WS/src/px4_msgs" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+  if [ "$have" = "$MSGS_BRANCH" ]; then
+    ok "already present on $MSGS_BRANCH"
+  else
+    warn "$WS/src/px4_msgs is on '$have', not $MSGS_BRANCH. Its messages must
+        match PX4 $PX4_VERSION: git -C $WS/src/px4_msgs fetch origin $MSGS_BRANCH
+        && git -C $WS/src/px4_msgs checkout $MSGS_BRANCH, then rerun."
+  fi
 fi
 
 # ------------------------------------------------------------- this package
@@ -237,7 +250,7 @@ say "Checking you have hardware OpenGL"
 # names the driver that reaches the Windows GPU. The clean-clone test ran this
 # check on a machine with a perfectly good GPU and got "software rendering",
 # which a reader would take for a broken GPU. So on WSL the check uses the
-# driver the README tells WSL users to export, and says so.
+# driver docs/install.md tells WSL users to export, and says so.
 WSL_NOTE=""
 if [ -d /usr/lib/wsl/lib ] && [ -z "${GALLIUM_DRIVER:-}" ]; then
   export GALLIUM_DRIVER=d3d12
@@ -281,7 +294,7 @@ say "Linking this repository's worlds and models into PX4's Gazebo tree"
 if bash "$HERE/scripts/link_assets.sh"; then
   ok "linked"
 else
-  warn "not linked. PX4 is not at ~/PX4-Autopilot yet (README step 2); run
+  warn "not linked. PX4 is not at ~/PX4-Autopilot yet (docs/install.md, step 2); run
         scripts/link_assets.sh afterwards, or the pillars world and the lidar
         model will not be found."
 fi
@@ -297,8 +310,8 @@ cat <<EOF
     ros2 launch avoidance_sim sim.launch.py      # brake at walls
     ros2 launch avoidance_sim nav2.launch.py     # or: plan a route round them
 
-  The launch sets the four PX4 parameters the stack needs once PX4 answers
-  (it logs them as [px4_params]); the README says why each is there.
+  The launch sets the five PX4 parameters the stack needs once PX4 answers
+  (it logs them as [px4_params]); docs/how-it-works.md says why each is there.
 
-  This script did NOT install PX4 $PX4_VERSION. See the README, Install, step 2.
+  This script did NOT install PX4 $PX4_VERSION. See docs/install.md, step 2.
 EOF

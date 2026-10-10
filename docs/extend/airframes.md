@@ -62,7 +62,8 @@ during transition, the phase when a VTOL changes from hover to wing-borne
 flight. So the gate's brake half applies to hover and multicopter flight
 only, and the plan half's Offboard velocity setpoints likewise. The
 measurements to add are the ones a VTOL forces: the standoff at the real
-mass, the yaw dead band of the new airframe (it will not be 0.105), and what
+mass, the yaw dead band of the new airframe (here the edge lies between 0.10 and
+0.12, and the pilot steps just inside it at `YAW_DZ` 0.105; a VTOL's will differ), and what
 collision prevention does in the seconds around a transition.
 
 ## Order
@@ -79,8 +80,9 @@ gate, with the README's status table gaining a row per airframe.
 - PX4-Autopilot v1.17.0: `ROMFS/px4fmu_common/init.d-posix/airframes/`
   (`4018_gz_quadtailsitter`, `4004_gz_standard_vtol`, `4020_gz_tiltrotor`)
   and that directory's `CMakeLists.txt`; the transition flight task, which
-  does not link collision prevention (the reading is in the notes repository's
-  autonomy guide).
+  does not link collision prevention: its sources under
+  `src/modules/flight_mode_manager/tasks/Transition/` never include
+  `CollisionPrevention`.
 - PX4-gazebo-models at `b6127f4`: `quadtailsitter`, `standard_vtol`,
   `tiltrotor`. https://github.com/PX4/PX4-gazebo-models
 - Nav2 Jazzy: `nav2_common/launch/rewritten_yaml.py`.

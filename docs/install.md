@@ -246,7 +246,7 @@ ros2 launch avoidance_sim sim.launch.py
 
 This starts the agent that carries PX4's topics into ROS 2, the bridge for the
 Gazebo clock and depth cloud, the obstacle node, the six RViz-side nodes and
-RViz itself. It also sets four PX4 parameters as soon as PX4 answers, and logs
+RViz itself. It also sets five PX4 parameters as soon as PX4 answers, and logs
 each one as `[px4_params]`:
 
 | Parameter | Why |
@@ -255,6 +255,7 @@ each one as `[px4_params]`:
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Off until set |
 | `CP_GO_NO_DATA=1` | Let PX4 move into directions the camera cannot see. The camera sees 73 of 360 degrees |
+| `COM_RC_OVERRIDE=0` | Stick override off. The software pilot is the only stick source, and PX4 counted its own stick changes as a pilot taking over, which cancelled a Land |
 
 > These values are for the simulator only. Three of them switch off a
 > protection a real aircraft needs; [hardware.md](hardware.md) lists what changes before
@@ -343,4 +344,5 @@ sleep 3; pkill -9 -f "gz sim"; pkill -9 -f "bin/px4"
 pgrep -cf "gz sim|bin/px4"        # must print 0, or the old world survives
 ```
 
-Then run terminal 1 again. The parameters are saved, so they survive.
+Then run terminal 1 again. The parameters are saved, so they survive (and
+the launch in terminal 2 sets its five again anyway).

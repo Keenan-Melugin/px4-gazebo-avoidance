@@ -7,6 +7,7 @@
 set -u
 line() { printf '%-22s %s\n' "$1" "$2"; }
 echo "== machine =="
+PX4="${PX4_ROOT:-$HOME/PX4-Autopilot}"   # the same variable link_assets.sh honours
 line "date" "$(date -u +%Y-%m-%dT%H:%MZ)"
 line "os" "$( (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME") || uname -s)"
 line "kernel" "$(uname -r)"
@@ -33,9 +34,9 @@ line "display" "DISPLAY=${DISPLAY:-unset} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-uns
 echo "== versions =="
 line "ros" "$( [ -r /opt/ros/jazzy/setup.bash ] && echo "jazzy at /opt/ros/jazzy" || echo "not found")"
 line "gazebo" "$(gz sim --versions 2>/dev/null | head -1 || echo "not found")"
-line "px4 tree" "$( [ -d "$HOME/PX4-Autopilot" ] && git -C "$HOME/PX4-Autopilot" describe --tags 2>/dev/null || echo "not found at ~/PX4-Autopilot")"
-line "px4 built" "$( [ -x "$HOME/PX4-Autopilot/build/px4_sitl_default/bin/px4" ] && echo yes || echo no)"
-line "camera patch" "$( [ -d "$HOME/PX4-Autopilot/Tools/simulation/gz" ] && (git -C "$HOME/PX4-Autopilot/Tools/simulation/gz" diff --quiet -- models/OakD-Lite 2>/dev/null && echo "not applied" || echo "applied") || echo "?")"
+line "px4 tree" "$( [ -d "$PX4" ] && git -C "$PX4" describe --tags 2>/dev/null || echo "not found at $PX4")"
+line "px4 built" "$( [ -x "$PX4/build/px4_sitl_default/bin/px4" ] && echo yes || echo no)"
+line "camera patch" "$( [ -d "$PX4/Tools/simulation/gz" ] && (git -C "$PX4/Tools/simulation/gz" diff --quiet -- models/OakD-Lite 2>/dev/null && echo "not applied" || echo "applied") || echo "?")"
 line "agent" "$(command -v MicroXRCEAgent || echo "not on PATH")"
 WS=${WS:-$HOME/av_ws}
 line "workspace" "$( [ -f "$WS/install/setup.bash" ] && echo "$WS" || echo "not built at $WS")"
@@ -60,7 +61,7 @@ if command -v gz >/dev/null && [ "$(pgrep -cf 'gz sim')" != "0" ]; then
   line "world" "${W:-unknown}"
   line "real-time factor" "$(timeout 10 gz topic -e -t /world/${W:-walls}/stats -n 3 2>/dev/null | grep -oE 'real_time_factor: [0-9.]+' | tail -1 | cut -d' ' -f2)"
 fi
-BIN="$HOME/PX4-Autopilot/build/px4_sitl_default/bin"
+BIN="$PX4/build/px4_sitl_default/bin"
 if [ -x "$BIN/px4-listener" ] && [ "$(pgrep -cf 'bin/px4')" != "0" ]; then
   line "obstacle_distance" "$(timeout 10 "$BIN/px4-listener" obstacle_distance 1 2>/dev/null | grep -aoE 'timestamp: [0-9]+ \([^)]*\)' | head -1 || echo "not arriving")"
   line "arming / mode" "$(timeout 10 "$BIN/px4-commander" status 2>/dev/null | grep -aiE 'arming|nav state|mode' | head -2 | tr -s ' ' | paste -sd'|')"

@@ -17,8 +17,9 @@ topic alternate and the histogram flickers between them. So the sensors are
 merged before PX4 sees any of them: the nearest range per bin across the
 sensors that are alive, the observed arc is the union of theirs, and a sensor
 that goes quiet drops out of the union. Its bins then report UNKNOWN, and PX4
-refuses to move into them (CP_GO_NO_DATA 0) or moves blind as it would have
-anyway (CP_GO_NO_DATA 1). PX4 itself treats a stream that stops as no data
+refuses to move into them: with CP_GO_NO_DATA 0 always, and with 1 too for
+any bin it has observed before (CollisionPrevention keeps _data_fov set), so
+a sensor dropping out blocks the directions it used to cover. PX4 itself treats a stream that stops as no data
 after 0.5 s (RANGE_STREAM_TIMEOUT_US), which is what the all-NaN rule below
 relies on.
 

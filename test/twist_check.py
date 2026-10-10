@@ -19,7 +19,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import guarded  # noqa: E402
+from regression import guarded, require_modelled, route_to  # noqa: E402
 
 from avoidance_sim import world_geometry
 from rclpy.node import Node
@@ -127,6 +127,7 @@ def main():
     ap.add_argument('--world', default='walls',
                     help='world name (as PX4_GZ_WORLD) or path to its .sdf')
     a = ap.parse_args()
+    require_modelled(world_geometry.resolve_world(a.world))
     boxes = world_geometry.load_boxes(world_geometry.resolve_world(a.world))
 
     rclpy.init()
@@ -161,12 +162,9 @@ def main():
         print("  no point 15 m from every wall in this world"); return 2
     east, north = clear
     print("  climbing, flying to open air at east %+.0f north %+.0f, pointing north" % (east, north))
-    hdg = math.degrees(math.atan2(east - n.pos[1], north - n.pos[0]))
-    n.send(east, north, 8.0, hdg)          # face the route: the camera sees ahead only
-    for _ in range(60):
-        spin(n, 1.0)
-        if abs(n.pos[1] - east) < 1.0 and abs(n.pos[0] - north) < 1.0:
-            break
+    # By a route round the boxes, facing each leg (the camera sees ahead only).
+    if not route_to((east, north), 8.0, boxes):
+        print("  ABORT: could not reach open air by a clear route"); return 2
     n.send(east, north, 8.0, 0.0)
     for _ in range(30):
         spin(n, 1.0)

@@ -24,32 +24,46 @@ it was not meant to. Each half also runs on its own.
 
 | Script | What it measures |
 |---|---|
-| `yaw_threshold.py` | Sweeps the yaw stick to find the dead band and the stick-to-rate slope. The yaw table in the README comes from here |
+| `yaw_threshold.py` | Sweeps the yaw stick to find the dead band and the stick-to-rate slope. The yaw table in docs/how-it-works.md comes from here |
 | `xy_threshold.py` | The same sweep for the XY stick: where motion starts and how much velocity a unit of stick commands |
 | `yaw_test.py` | Four cardinal headings, settled error. Also checks that a position-only goal leaves the heading alone |
 | `hold_test.py` | Separates "does it turn" from "does it stay turned": holds zero stick and watches for drift |
-| `velmode_ab.py` | Commanded against achieved speed in velocity mode, with collision prevention on and off. This is the A/B that showed collision prevention and a planner cannot share an axis |
-| `mode_test.py` | The brake/plan toggle in both directions, and that plan mode is not subject to collision prevention |
+| `velmode_ab.py` | Commanded against achieved speed in velocity mode, with collision prevention on and off. It flies in open air, so today it checks speed tracking only: both trials should match. The A/B that showed collision prevention and a planner cannot share an axis was measured in front of box1 (0.00 against 1.24 m/s, in docs/how-it-works.md) and needs a wall within `CP_DIST` to reproduce |
+| `mode_test.py` | The brake/plan toggle in both directions, Offboard tracking forward and sideways, and the body-to-NED conversion. It flies in open air, so its step 3 shows plan mode flying with `CP_DIST` set, not plan mode flying past a wall |
 | `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding forward, right and left in turn and reading back how far the aircraft moved in the world |
+| `land_test.py` | That a Land commanded while the pilot flies a goal stands: PX4 stays in Land and descends, a new pilot goal is refused, and publishing brake takes Position mode back. The first Land fix passed a check made with no goal active and was still wrong, because the pilot's moving sticks triggered PX4's stick override |
 | `twist_check.py` | That `/odom` carries its twist in base_link FLU, as nav_msgs requires, rather than in the world frame |
 | `template_measure.py` | Not a measurement: the skeleton to copy for a new one, with the five-step shape new scripts should follow. Its placeholder measures drift when the aircraft is left alone |
 | `histogram_selftest.py` | The obstacle node against made-up clouds and scans, bin by bin: the single camera as measured, two sensors merged, stale and dead sensors, a yawed sensor. The only script here that needs no simulator; two seconds |
 
-## Last run, 2026-10-10
+## Last run, 2026-10-10 (third review)
 
-Every script in sequence on one freshly started stack, then the order that
-used to fail (`nav2_flight.py` straight into `regression.py`), then the gate,
-about forty minutes of flying in all:
+Every script in sequence on one freshly started stack, the three scripts a
+harness bug had stopped run again, then the new `land_test.py` three times on
+a second fresh stack with the gate after it. Each script now prints the
+simulation's real-time factor first; it read 0.77 to 1.09.
 
 | Script | Result |
 |---|---|
 | `histogram_selftest.py` | Pass |
-| `regression.py`, `nav2_flight.py`, `gate.py` | Pass. Standoffs 2.00 and 2.02 m; Nav2 ended 0.4 to 0.8 m from its goal. The regression run straight after `nav2_flight.py` routed round box2 to its line and passed |
-| `yaw_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py`, `ned_check.py` | Pass. In open air `ned_check.py` moved 10.5 m on each leg in 11 s at 1 m/s with the heading steady; `velmode_ab.py` achieved 0.92 m/s with collision prevention on and off |
-| `hold_test.py` | Holds: no drift in 30 s, 6.7 degrees of coast past the cut point. Earlier runs measured 2.5, 3.5 and 27 degrees, from before the test took over the stick stream |
-| `mode_test.py` | Pass: 1.02 m/s forward and 1.02 m/s right for 1.00 commanded. Its first run of the day read 0.34 m/s right: a trace showed the leg hitting box1 at 1 m/s in plan mode and the aircraft falling to the ground, from a start the script called "well clear of the walls". It had always exited 0, so nobody saw. It now starts in open air found from the world file |
-| `yaw_threshold.py` | Turns from stick 0.15, as before |
-| `xy_threshold.py` | Repeats in open air: dead band 0.115 and 0.114, slope 5.05 and 5.03 m/s per unit in two runs from different starts, matching the pilot's 0.114 and 5.02. The earlier spread (5.0, 2.4, 1.2) was walls: the sweep flew forward from wherever it was, and collision prevention braked it |
+| `regression.py`, `nav2_flight.py`, `gate.py` | Pass. Standoffs 1.93, 1.98 and 2.01 m against `CP_DIST` 2.00 read from PX4; Nav2 ended 0.5 to 0.6 m from its goal |
+| `land_test.py` | Pass, three runs of three on a fresh launch: Land held while a goal was being flown (7.6 m down to 4.6 m in 4 s), a goal sent at 2.3 m was refused, and brake took Position mode back. Before the launch set `COM_RC_OVERRIDE` 0, one run in two failed: LAND sent as the pilot arrived at its goal was cancelled, "Pilot took over using sticks" in PX4's log, despite the pilot freezing its sticks |
+| `yaw_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py`, `ned_check.py`, `mode_test.py` | Pass. Headings within 5.7 degrees; `velmode_ab.py` 0.92 m/s with collision prevention on and off; `mode_test.py` 1.02 m/s each axis |
+| `hold_test.py` | Holds: no drift in 30 s, 1.3 degrees of coast past the cut point (6.7 the run before) |
+| `yaw_threshold.py` | Counts the aircraft as turning from stick 0.15, as before. The table in docs/how-it-works.md shows 1.1 deg/s at 0.12, below this script's turning threshold |
+| `xy_threshold.py` | Repeats: dead band 0.114, slope 5.03 m/s per unit, matching the pilot's 0.114 and 5.02 (0.115 and 5.05 the run before) |
+
+Two failures in the first sequence were the harness's, not the stack's: the
+open-air start insisted on facing north within 5 degrees while the pilot
+counts 8 as arrived, and the first `land_test.py` checked for a refused goal
+after PX4 had already landed and disarmed, which returns it to Position mode
+by itself. Both were fixed and the scripts rerun.
+
+Earlier the same day, `mode_test.py` read 0.34 m/s sideways: a trace showed
+the leg hitting box1 at 1 m/s in plan mode and the aircraft falling, from a
+start the script called "well clear of the walls". And the XY sweep's slope
+varied (5.0, 2.4, 1.2) because collision prevention braked it near walls.
+Fixed-leg scripts now start in open air found from the world file.
 
 The late-session failures recorded before this run are explained. The plan
 half leaves the aircraft at north 10, beyond box2. The brake half then tried
@@ -60,7 +74,9 @@ in a session because only the gate, or a run after `nav2_flight.py`, starts
 there. `regression.py` now routes round obstacles and refuses to measure from
 a line it did not reach.
 
-Run them with the stack up and the workspace sourced, for example:
+Run every script from the repository root (`cd ~/px4-gazebo-avoidance`) in a
+terminal with the workspace sourced. Scripts that set PX4 parameters find
+`px4-param` on `PATH` or under `PX4_ROOT` (default `~/PX4-Autopilot`). For example:
 
 ```bash
 python3 test/yaw_test.py
@@ -71,10 +87,14 @@ reads the wall positions from that world's file, through the same parser
 RViz's markers use; `gate.py` passes it to both halves. `nav2_flight.py` also
 takes `--start E N`, `--goal E N` and `--alt`.
 
-Two things to know before trusting a result:
+Four things to know before trusting a result:
 
-* **Each script takes off itself if it has to.** The ones that measure in
-  flight call `ensure_airborne()` from `regression.py`. `twist_check.py` also
+* **Each script takes off itself if it has to.** Most call
+  `ensure_airborne()` from `regression.py`; `twist_check.py`,
+  `template_measure.py` and `nav2_flight.py` arm and climb their own way.
+  Every repositioning goes by a route round the world's boxes, and a world
+  with obstacles the geometry cannot read (included models, meshes) is
+  refused rather than flown through. `twist_check.py` also
   flies to open air from the world file first, because near a wall collision
   prevention deflects its legs. The standoff is measured by the
   gate's brake half; the older `avoid_test.py` was retired on 2026-10-10 after

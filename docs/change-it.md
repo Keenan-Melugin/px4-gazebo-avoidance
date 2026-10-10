@@ -18,6 +18,7 @@ docs/
   extend.md             index of the four extension pages, and where PX4 looks for worlds and models
   extend/               worlds.md, sensors.md, airframes.md, second-machine.md: one page per kind of addition
   data.md               flight logs, bags, replay, the input topics, configuration by file, the conditions of a run
+  hardware.md           what changes before any real flight
   img/                  the three screenshots
 avoidance_sim/
   frames.py             frame conventions, the two shared QoS profiles, quaternion helpers
@@ -65,7 +66,12 @@ not pick up new code.
 
 ## The gate
 
+Run every script from the repository root (`cd ~/px4-gazebo-avoidance`) in a
+terminal with the workspace sourced. Scripts that set PX4 parameters find
+`px4-param` on `PATH` or under `PX4_ROOT` (default `~/PX4-Autopilot`).
+
 ```bash
+cd ~/px4-gazebo-avoidance
 python3 test/gate.py                  # about 4 minutes, needs nav2.launch.py running
 python3 test/gate.py --world pillars  # the same, in the second world
 ```
@@ -73,9 +79,11 @@ python3 test/gate.py --world pillars  # the same, in the second world
 Run it after any change to the pilot, the frames, the obstacle node or the
 Nav2 configuration. It flies the aircraft through the two things this
 repository claims. In brake mode: four cardinal headings held, then the
-closest approach to a wall at `CP_DIST 2.0`. The brake half finds the wall
-east of the aircraft from the world file, moves well inside its span, backs
-off to 8 m for a run-up, pushes, and stops once the aircraft has stood still.
+closest approach to a wall at `CP_DIST`, read from PX4. The brake half picks
+a wall from the world file with a line 4 m inside its ends and a clear 8 m
+run-up, flies a route round any other box to the run-up point, pushes, and
+stops once the aircraft has stood still. It aborts rather than measure from
+the wrong place.
 In plan mode: a route round a 10 m wall to a goal behind it, ending within 4 m
 of the goal. The exit code counts failures, and each half prints what it
 measured, so a regression shows up as a number that moved, not as an
@@ -94,10 +102,13 @@ and names the bin that went wrong rather than the wall the aircraft hit.
 ## Recipes
 
 **Change the standoff.** `CP_DIST` is a PX4 parameter the launch sets. Pass
-`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1"` to the
+`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1 COM_RC_OVERRIDE=0"` to the
 launch, or `param set CP_DIST 3.0` at the `pxh>` prompt on a running PX4.
-Measure with `test/regression.py`, the gate's brake half, which finds the wall
-from the world file, takes a run-up and prints the closest approach. Expect a spread of a third of the setpoint.
+Measure with `test/regression.py`, the gate's brake half. It reads `CP_DIST`
+from PX4 and judges the standoff against it (`--cp-dist 3.0` overrides), so
+the pass band moves with the setting. Expect a spread of a third of the
+setpoint. The next launch re-applies its own `px4_params`, so pass your value
+there too or it is back to 2.0.
 
 **Change the camera.** Resolution and rate are in
 `patches/px4-camera-res.patch`, applied to the OakD-Lite model in the PX4

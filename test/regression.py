@@ -18,6 +18,7 @@ code is the number of failures.
 """
 import argparse
 import math
+import os
 import sys
 import time
 
@@ -66,6 +67,44 @@ def wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
+def px4_param(*args):
+    """Run PX4's px4-param client. Finds it on PATH, else under PX4_ROOT.
+
+    The scripts used to call a bare "px4-param", which needs PX4's build
+    directory on PATH and raised FileNotFoundError without it.
+    """
+    import shutil
+    import subprocess
+    exe = shutil.which('px4-param')
+    if exe is None:
+        root = os.environ.get('PX4_ROOT') or os.path.expanduser('~/PX4-Autopilot')
+        exe = os.path.join(root, 'build', 'px4_sitl_default', 'bin', 'px4-param')
+    if not os.path.exists(exe):
+        raise RuntimeError("px4-param not found on PATH or under PX4_ROOT (%s); "
+                           "add PX4's build/px4_sitl_default/bin to PATH" % exe)
+    return subprocess.run([exe] + [str(a) for a in args],
+                          capture_output=True, text=True, timeout=20)
+
+
+def set_param(name, value):
+    """Set a PX4 parameter, raising if px4-param reports a failure."""
+    r = px4_param('set', name, value)
+    if r.returncode != 0:
+        raise RuntimeError('px4-param set %s %s failed: %s'
+                           % (name, value, (r.stderr or r.stdout).strip()))
+
+
+def get_param(name):
+    """A PX4 parameter's current value as a float, or None."""
+    import re
+    try:
+        r = px4_param('show', name)
+    except (RuntimeError, OSError):
+        return None
+    m = re.search(r'%s\b.*?:\s*(-?[0-9.]+)' % re.escape(name), r.stdout)
+    return float(m.group(1)) if m else None
+
+
 def leg_clearance(boxes, a, b, step=0.5):
     """Smallest distance to any box along the straight leg a -> b, (east, north).
 
@@ -106,12 +145,20 @@ def route(boxes, a, b, min_clear=2.5, extent=20.0, step=1.0):
         return (int(round((p[0] - x0) / step)), int(round((p[1] - y0) / step)))
 
     free = {}
+    # A start closer than min_clear (the aircraft stopped near a wall) used to
+    # strand the search: every neighbour was blocked, so it returned None and
+    # every later script failed. Within 3 m of the start, cells no closer to
+    # a box than the start itself are allowed, which lets it back away.
+    start_clear = world_geometry.clearance(boxes, a[0], a[1])
 
     def ok(c):
         if c not in free:
             p = pt(c)
+            cl = world_geometry.clearance(boxes, p[0], p[1])
+            near_start = math.hypot(p[0] - a[0], p[1] - a[1]) <= 3.0
             free[c] = (0 <= c[0] < nx and 0 <= c[1] < ny
-                       and world_geometry.clearance(boxes, p[0], p[1]) >= min_clear)
+                       and (cl >= min_clear
+                            or (near_start and cl >= start_clear - 0.05)))
         return free[c]
 
     start, goal = cell(a), cell(b)
@@ -184,9 +231,31 @@ def world_boxes(default='walls'):
     For scripts that take no other arguments, so they need no argparse.
     """
     w = default
-    if '--world' in sys.argv[:-1]:
-        w = sys.argv[sys.argv.index('--world') + 1]
-    return world_geometry.load_boxes(world_geometry.resolve_world(w))
+    for i, arg in enumerate(sys.argv):
+        if arg == '--world' and i + 1 < len(sys.argv):
+            w = sys.argv[i + 1]
+        elif arg.startswith('--world='):
+            w = arg.split('=', 1)[1]
+    path = world_geometry.resolve_world(w)
+    require_modelled(path)
+    boxes = world_geometry.load_boxes(path)
+    print("  world %s: %d boxes" % (world_geometry.world_name(path), len(boxes)))
+    return boxes
+
+
+def require_modelled(path):
+    """Stop if the world holds obstacles the scripts cannot see.
+
+    Routes, open air and run-up lines are planned from the plain boxes alone.
+    Included models and meshes would be flown through as if absent.
+    """
+    missing = world_geometry.unmodelled(path)
+    if missing:
+        print("  ABORT: %s has %d obstacle(s) the test geometry cannot model "
+              "(only plain <box> models are read), for example %s. Routes and "
+              "open air computed without them would fly through them."
+              % (world_geometry.world_name(path), len(missing), missing[0]))
+        raise SystemExit(2)
 
 
 def open_air(boxes, legs, near, margin=5.0, extent=60.0, step=2.0):
@@ -236,8 +305,30 @@ def fly_route(n, boxes, dest, alt=7.0):
             spin(n, 1.0)
             if abs(n.pos[1] - e) < 0.8 and abs(n.pos[0] - no) < 0.8:
                 break
+        else:
+            # The next leg was only checked from where this one ends.
+            print("    leg to east %+.1f north %+.1f not reached in 60 s "
+                  "(at east %+.1f north %+.1f)" % (e, no, n.pos[1], n.pos[0]))
+            return False
     spin(n, 2.0)
     return abs(n.pos[1] - dest[0]) < 0.8 and abs(n.pos[0] - dest[1]) < 0.8
+
+
+def route_to(dest, alt, boxes):
+    """Fly to dest (east, north) at alt by a clear route, on a node of its own.
+
+    For scripts whose own node class has no send(): twist_check and
+    nav2_flight used to reposition in one straight line, which from where
+    the gate leaves the aircraft passes through box2.
+    """
+    n = R()
+    for _ in range(40):
+        spin(n, 0.5)
+        if n.pos is not None:
+            break
+    ok = n.pos is not None and fly_route(n, boxes, dest, alt)
+    n.destroy_node()
+    return ok
 
 
 class R(Node):
@@ -304,14 +395,34 @@ def spin(n, s):
         rclpy.spin_once(n, timeout_sec=0.05)
 
 
-def set_pilot_mode(mode):
-    """Publish a pilot mode with the retained QoS the pilot subscribes with."""
+def set_pilot_mode(mode, also=None):
+    """Publish a pilot mode with the retained QoS the pilot subscribes with.
+
+    `also` is the caller's own node, spun alongside. A script that streams
+    its own sticks must pass it: spinning only this helper's node starved the
+    script's 50 Hz timer for 2.5 s, longer than COM_RC_LOSS_T (0.5 s), so PX4
+    saw the sticks stop at the very moment the script took them over.
+    Switch back to brake BEFORE stopping your own stream, for the same reason.
+    """
+    from rclpy.executors import SingleThreadedExecutor
     n = R()
+    ex = SingleThreadedExecutor()
+    ex.add_node(n)
+    if also is not None:
+        ex.add_node(also)
+
+    def run(s):
+        t = time.time()
+        while time.time() - t < s:
+            ex.spin_once(timeout_sec=0.02)
     m = String()
     m.data = mode
-    spin(n, 1.0)
+    run(1.0)
     n.mode.publish(m)
-    spin(n, 1.5)
+    run(1.5)
+    ex.remove_node(n)
+    if also is not None:
+        ex.remove_node(also)
     n.destroy_node()
 
 
@@ -334,10 +445,18 @@ def leave_safe(cancel_nav2=True):
                                   '/navigate_to_pose/_action/cancel_goal')
             if cli.wait_for_service(timeout_sec=1.0):
                 cli.call_async(CancelGoal.Request())   # blank = cancel all
-        m = String()
-        m.data = 'brake'
+        # Brake only if the pilot is not in brake already. Re-sending brake is
+        # the explicit way to take Position mode back, so sending it every
+        # time would cancel a Land or Return in progress.
+        latched = []
+        sub = n.create_subscription(String, '/avoidance_sim/mode',
+                                    lambda m: latched.append(m.data), MODE_QOS)
         spin(n, 1.0)
-        n.mode.publish(m)
+        n.destroy_subscription(sub)
+        if latched and latched[-1].strip().lower() != 'brake':
+            m = String()
+            m.data = 'brake'
+            n.mode.publish(m)
         t0 = time.time()
         while n.goal.get_subscription_count() == 0 and time.time() - t0 < 5.0:
             spin(n, 0.1)
@@ -358,10 +477,51 @@ def guarded(run):
     exception still gets the closing leave_safe().
     """
     leave_safe()
+    rtf_warning()
     try:
         return run()
     finally:
         leave_safe()
+
+
+def rtf_warning(window=3.0):
+    """Print the simulation's real-time factor and warn below 0.9.
+
+    The scripts time their windows on the wall clock while PX4 runs on
+    simulated time, so at a real-time factor of 0.5 a "5 s" acceleration is
+    2.5 s of simulated flight and rates come out halved. Measured: 1.00
+    headless on the development machine, 0.55 to 0.89 with the Gazebo GUI.
+    """
+    from rosgraph_msgs.msg import Clock
+    own = not rclpy.ok()
+    if own:
+        rclpy.init()
+    n = Node('rtf_probe')
+    seen = []
+    n.create_subscription(Clock, '/clock',
+                          lambda m: seen.append(m.clock.sec + m.clock.nanosec * 1e-9),
+                          QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
+                                     history=HistoryPolicy.KEEP_LAST, depth=10))
+    # Discovery first (a new node takes seconds to match here), then the
+    # measurement window from the first message.
+    t_disc = time.time()
+    while not seen and time.time() - t_disc < 10.0:
+        rclpy.spin_once(n, timeout_sec=0.05)
+    seen.clear()
+    t0 = time.time()
+    while time.time() - t0 < window:
+        rclpy.spin_once(n, timeout_sec=0.05)
+    elapsed = time.time() - t0
+    n.destroy_node()
+    if own:
+        rclpy.try_shutdown()
+    if len(seen) < 2:
+        print("  real-time factor: unknown (no /clock)")
+        return
+    rtf = (seen[-1] - seen[0]) / max(1e-3, elapsed)
+    print("  real-time factor %.2f%s" % (
+        rtf, "" if rtf >= 0.9 else
+        "  WARNING: below 0.9, so timed windows and measured rates are off"))
 
 
 def ensure_airborne(alt=7.0, goto=None, legs=None, margin=5.0):
@@ -409,6 +569,10 @@ def ensure_airborne(alt=7.0, goto=None, legs=None, margin=5.0):
         spin(n, 1.0)
         if n.pos[2] > alt - 1.0:
             break
+    else:
+        print("  climb to %.1f m not reached (at %.1f m)" % (alt, n.pos[2]))
+        n.destroy_node()
+        return None
     boxes = world_boxes() if (goto is not None or legs is not None) else None
     if legs is not None:
         goto = open_air(boxes, legs, (n.pos[1], n.pos[0]), margin)
@@ -425,10 +589,18 @@ def ensure_airborne(alt=7.0, goto=None, legs=None, margin=5.0):
             return None
     if legs is not None:
         n.send(n.pos[1], n.pos[0], alt, 0.0)       # face north
+        # 10 degrees: the pilot counts a heading as reached within 8
+        # (ARRIVED_YAW) and stops turning there, so a tighter test failed
+        # on an aircraft settled 5 degrees off.
         for _ in range(25):
             spin(n, 1.0)
-            if abs(math.degrees(wrap(n.yaw))) < 5.0:
+            if abs(math.degrees(wrap(n.yaw))) < 10.0:
                 break
+        else:
+            print("  did not turn to face north (heading %+.0f)"
+                  % math.degrees(n.yaw))
+            n.destroy_node()
+            return None
     spin(n, 3.0)
     out = (n.pos[0], n.pos[1], n.pos[2])
     n.destroy_node()
@@ -439,9 +611,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--world', default='walls',
                     help='world name (as PX4_GZ_WORLD) or path to its .sdf')
+    ap.add_argument('--cp-dist', type=float, default=None,
+                    help='the CP_DIST to judge the standoff against; read from '
+                         'PX4 when omitted')
     a = ap.parse_args()
     world = world_geometry.resolve_world(a.world)
+    require_modelled(world)
     boxes = world_geometry.load_boxes(world)
+    global CP_DIST
+    cp = a.cp_dist if a.cp_dist is not None else get_param('CP_DIST')
+    if cp is None:
+        print("  could not read CP_DIST from PX4; judging against %.1f" % CP_DIST)
+    elif cp <= 0:
+        print("  CP_DIST is %.1f in PX4: collision prevention is OFF, so there "
+              "is no standoff to measure  ABORT" % cp)
+        return 1
+    else:
+        CP_DIST = cp
+    print("  judging the standoff against CP_DIST %.2f m" % CP_DIST)
     print("  world %s: %d boxes" % (world_geometry.world_name(world), len(boxes)))
 
     rclpy.init()
@@ -477,8 +664,13 @@ def main():
              else "(NOT Position; collision prevention may not apply)"))
 
     if n.pos[2] < 4.0:
-        n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
-        spin(n, 3.0)
+        # Retried, like ensure_airborne: PX4 refuses to arm for tens of
+        # seconds after boot while the estimator settles.
+        for _ in range(20):
+            n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
+            spin(n, 3.0)
+            if n.arm == 2:
+                break
         if n.arm != 2:
             # Found by the clean-clone test: on a fresh install the x500
             # airframe's NAV_DLL_ACT default of 2 waits for a ground station.

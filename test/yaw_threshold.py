@@ -71,7 +71,7 @@ def main():
     n = P()
     # The sweep owns the sticks: the pilot stops streaming its own, or
     # the two fight and the sweep measures nothing (2026-10-10).
-    set_pilot_mode('external')
+    set_pilot_mode('external', also=n)    # keep this script's sticks flowing
     # Up to 20 s for the first data. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had
     # not finished and the script quit before measuring anything.
@@ -113,7 +113,7 @@ def main():
         print("  is still wanted, or it stalls short of the heading.")
     n.stick = 0.0
     spin(n, 1.0)
-    set_pilot_mode('brake')
+    set_pilot_mode('brake', also=n)       # before this script's stream stops
     n.destroy_node()
     rclpy.try_shutdown()
     return 1 if first is None else 0

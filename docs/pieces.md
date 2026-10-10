@@ -25,10 +25,13 @@ where it first appears.
      v                                                                       v
   ============================== ROS 2 topics (DDS) ==============================
      |               |                    |                    |
-  obstacle node   software pilot      Nav2 (plan mode)      RViz and its six helper nodes
+  obstacle node   software pilot      Nav2 (plan mode)      RViz, and five helper nodes
   cloud -> 72-bin  goals -> sticks     cloud -> costmap ->   draws everything,
   histogram to     at 50 Hz to PX4     path -> /cmd_vel      sends goals and modes
   PX4              (brake mode)        to the pilot
+
+  The software pilot and the five helper nodes run together in one process,
+  rviz_bridge, separate from RViz itself: rviz:=false closes RViz, not them.
 
   Records:  PX4 writes a .ulg flight log on its own.  ROS 2 writes a .mcap bag when asked.
             Gazebo writes nothing; its input is the world and model files.
@@ -86,10 +89,11 @@ produce silence, not an error. Time can come from the system clock or from a
 ### What it does here
 
 Everything on the ROS side of this repo is a node. The obstacle node is one
-subscriber, one publisher and ten lines of maths in the middle. The software
-pilot is a timer that publishes sticks at 50 Hz. Then there are the six
-small nodes in the RViz process (the menus, the markers and the TF
-publisher among them) and Nav2's servers. `sim.launch.py` starts them with `use_sim_time` so they follow
+subscriber per sensor, one publisher and ten lines of maths in the middle. The software
+pilot is a timer that publishes sticks at 50 Hz. It runs in one process,
+`rviz_bridge`, with five small helpers (the menus, the markers and the TF
+publisher among them); that process is not RViz, which is a window. Then
+there are Nav2's servers. `sim.launch.py` starts them with `use_sim_time` so they follow
 Gazebo's clock. The PX4 topics are all under `/fmu/out/` (from PX4) and
 `/fmu/in/` (to PX4), named after the FMU, the flight management unit that
 PX4 runs on. They use the sensor-data QoS profile, which is "best effort":

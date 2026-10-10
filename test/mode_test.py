@@ -23,7 +23,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne, guarded  # noqa: E402
+from regression import ensure_airborne, guarded, set_param  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -44,8 +44,9 @@ POSCTL, OFFBOARD = 2, 14
 
 
 def param(name, value):
-    subprocess.run(["px4-param", "set", name, str(value)],
-                   capture_output=True, timeout=20)
+    # Raises if the set fails: this test used to carry on with values that
+    # were never applied.
+    set_param(name, value)
 
 
 class M(Node):

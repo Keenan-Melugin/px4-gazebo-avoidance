@@ -21,7 +21,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import guarded  # noqa: E402
+from regression import guarded, require_modelled, route_to  # noqa: E402
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
@@ -184,6 +184,7 @@ def main():
     a = ap.parse_args()
     start, goal, alt = tuple(a.start), tuple(a.goal), a.alt
     world = world_geometry.resolve_world(a.world)
+    require_modelled(world)
     boxes = world_geometry.load_boxes(world)
     hit = world_geometry.first_face_ahead(boxes, start[0], start[1], alt, 'north')
     if hit is None:
@@ -203,7 +204,7 @@ def main():
     rclpy.init()
     n = N2()
     try:
-        return fly(n, start, goal, alt, wall_north, wall)
+        return fly(n, start, goal, alt, wall_north, wall, boxes)
     finally:
         # Every exit, including an ABORT, a timeout and Ctrl-C, leaves nothing
         # driving. A Nav2 goal left running kept publishing /cmd_vel after
@@ -237,7 +238,7 @@ def cleanup(n):
     spin(n, 2.0)
 
 
-def fly(n, start, goal, alt, wall_north, wall):
+def fly(n, start, goal, alt, wall_north, wall, boxes):
     # Up to 20 s for the first position. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had not
     # finished and the test quit with "no position".
@@ -273,13 +274,11 @@ def fly(n, start, goal, alt, wall_north, wall):
     # north and turned the aircraft over.
     print("  positioning at east %.1f north %.1f alt %.1f, facing the route"
           % (start[0], start[1], alt))
-    hdg = math.degrees(math.atan2(start[0] - n.pos[1], start[1] - n.pos[0]))
-    n.goal_pilot(start[0], start[1], alt, hdg)
-    for _ in range(75):
-        spin(n, 1.0)
-        if (abs(n.pos[1] - start[0]) < 1.2 and abs(n.pos[0] - start[1]) < 1.2
-                and n.pos[2] > alt - 1.5):
-            break
+    # By a route round the world's boxes. A straight line from where the gate
+    # leaves the aircraft (north 10) to the start passes through box2.
+    if not route_to(start, alt, boxes):
+        print("  ABORT: could not reach the start by a clear route")
+        return 2
     n.goal_pilot(start[0], start[1], alt, 0.0)
     for _ in range(20):
         spin(n, 1.0)

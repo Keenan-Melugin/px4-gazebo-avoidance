@@ -78,8 +78,8 @@ def main():
     # This script streams its own sticks. With the pilot streaming too,
     # two publishers interleave on one PX4 input and the zero-stick hold
     # measures the pilot, not PX4. guarded() puts brake back afterwards.
-    set_pilot_mode('external')
     n = H()
+    set_pilot_mode('external', also=n)    # keep this script's sticks flowing
     # Up to 20 s for the first data. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had
     # not finished and the script quit before measuring anything.
@@ -137,9 +137,12 @@ def main():
         print("  Both fine: holds, and coasts only %.1f deg." % abs(coast))
     n.yawstick = 0.0
     spin(n, 1.0)
+    # Hand the sticks back while this script is still streaming its own.
+    set_pilot_mode('brake', also=n)
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    # Fails on the measurement it exists for, as the README now records.
+    return 1 if abs(total) >= 10 else 0
 
 
 if __name__ == '__main__':

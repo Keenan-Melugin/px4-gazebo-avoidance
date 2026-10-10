@@ -28,7 +28,8 @@ import re
 from collections import namedtuple
 
 
-PX4_ROOT = os.path.expanduser('~/PX4-Autopilot')
+# PX4_ROOT is the same variable scripts/link_assets.sh honours.
+PX4_ROOT = os.environ.get('PX4_ROOT') or os.path.expanduser('~/PX4-Autopilot')
 PX4_WORLDS = os.path.join(PX4_ROOT, 'Tools', 'simulation', 'gz', 'worlds')
 # The repository's own worlds, next to this package in a source checkout and
 # in share/avoidance_sim/worlds once installed. scripts/link_assets.sh, which
@@ -36,10 +37,21 @@ PX4_WORLDS = os.path.join(PX4_ROOT, 'Tools', 'simulation', 'gz', 'worlds')
 # PX4's worlds directory too, because PX4 builds the world path itself from
 # PX4_GZ_WORLDS, which its generated gz_env.sh overwrites (see docs/extend.md, "Where PX4 looks").
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _share_worlds():
+    # The installed copy, found the ROS way. A path counted up from this file
+    # pointed into site-packages once the package was installed.
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        return os.path.join(get_package_share_directory('avoidance_sim'), 'worlds')
+    except Exception:
+        return os.path.normpath(os.path.join(HERE, '..', 'worlds'))
+
+
 REPO_WORLDS = (
     os.path.normpath(os.path.join(HERE, '..', 'worlds')),
-    os.path.normpath(os.path.join(HERE, '..', '..', '..', 'share',
-                                  'avoidance_sim', 'worlds')),
+    _share_worlds(),
 )
 
 DIRECTIONS = ('east', 'west', 'north', 'south')
@@ -132,6 +144,22 @@ def load_boxes(path, skip=('ground_plane',)):
     return boxes
 
 
+def unmodelled(path, skip=('ground_plane',)):
+    """Names of what is in the world but not in load_boxes(): included models
+    and models without a plain <box>. The measurement scripts plan routes and
+    open air from the boxes alone, so anything here is invisible to them:
+    measured on PX4's forest world, 37 includes and 0 boxes, so every point
+    looked clear."""
+    text = open(path).read()
+    out = ['include:' + u.strip() for u in
+           re.findall(r'<include>.*?<uri>([^<]+)</uri>', text, re.S)]
+    boxed = {b.name for b in load_boxes(path, skip)}
+    for name in re.findall(r'<model name=[\'"]([^\'"]+)[\'"]', text):
+        if name not in boxed and name not in skip:
+            out.append('model:' + name)
+    return out
+
+
 def faces_ahead(boxes, east, north, alt, direction, margin=0.0):
     """Box faces ahead of (east, north, alt) along a cardinal direction.
 
@@ -172,11 +200,19 @@ def first_face_ahead(boxes, east, north, alt, direction, margin=0.0):
 
 
 def clearance(boxes, east, north):
-    """Horizontal distance from (east, north) to the nearest box, metres."""
+    """Horizontal distance from (east, north) to the nearest box, metres.
+
+    Yawed boxes are measured in their own frame. The axis-aligned extents
+    alone put a point inside a 20 m wall yawed 90 degrees 7.5 m clear of it.
+    """
     best = float('inf')
     for b in boxes:
-        dx = max(b.x_min - east, 0.0, east - b.x_max)
-        dy = max(b.y_min - north, 0.0, north - b.y_max)
+        lx, ly = east - b.cx, north - b.cy
+        if abs(b.yaw) > 1e-6:
+            c, s = math.cos(-b.yaw), math.sin(-b.yaw)
+            lx, ly = lx * c - ly * s, lx * s + ly * c
+        dx = max(abs(lx) - b.sx / 2.0, 0.0)
+        dy = max(abs(ly) - b.sy / 2.0, 0.0)
         best = min(best, (dx * dx + dy * dy) ** 0.5)
     return best
 

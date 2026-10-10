@@ -1,7 +1,7 @@
 """The draggable 3D waypoint, with arrows for position and a ring for heading.
 
 Split out of a single-file prototype. The behaviour here is measured, not
-assumed; see the repository README for the numbers and the traps.
+assumed; see docs/how-it-works.md for the numbers and the traps.
 """
 
 
@@ -17,7 +17,9 @@ from visualization_msgs.msg import (InteractiveMarker,
     InteractiveMarkerFeedback,
     Marker)
 
-from .frames import PX4_QOS, YAW_SUFFIX, quat_onto, wrap, yaw_of
+from std_msgs.msg import String
+
+from .frames import MODE_QOS, PX4_QOS, YAW_SUFFIX, quat_onto, wrap, yaw_of
 
 
 class Goal3D(Node):
@@ -53,6 +55,13 @@ class Goal3D(Node):
                                  self.on_local, PX4_QOS)
         self.create_subscription(PointStamped, '/clicked_point',
                                  self.on_click, 10)
+        # The direct fly is a PX4 reposition, which switches PX4 to an
+        # automatic mode: in plan mode that ends Offboard, and in external
+        # mode it pulls PX4 out from under a test script. Same rule as
+        # goal_bridge.py.
+        self.mode = 'brake'
+        self.create_subscription(String, '/avoidance_sim/mode', self.on_mode,
+                                 MODE_QOS)
 
         self.server = InteractiveMarkerServer(self, 'goal_3d')
         self.pilot_goal = self.create_publisher(
@@ -124,9 +133,14 @@ class Goal3D(Node):
             'to turn, right-click the green ball to fly. The yellow arrow is '
             'the heading it will hold. Publish Point places it (a real pick).')
 
+    def on_mode(self, m):
+        want = (m.data or '').strip().lower()
+        if want in ('brake', 'plan', 'external'):
+            self.mode = want
+
     def on_local(self, m):
         if (m.xy_global and m.z_global and math.isfinite(m.ref_lat)
-                and math.isfinite(m.ref_alt)):
+                and math.isfinite(m.ref_lon) and math.isfinite(m.ref_alt)):
             self.origin = (m.ref_lat, m.ref_lon, m.ref_alt)
         self.here = (m.y, m.x, -m.z) if math.isfinite(m.x) else None
 
@@ -193,6 +207,13 @@ class Goal3D(Node):
         self.get_logger().info('STOP sent')
 
     def fly(self):
+        if self.mode != 'brake':
+            self.get_logger().warn(
+                f'FLY HERE (direct) refused in {self.mode.upper()} mode: a '
+                f'reposition would switch PX4 out of '
+                f'{"Offboard" if self.mode == "plan" else "the test script"}. '
+                f'Switch to brake first.')
+            return
         if self.origin is None or self.pose is None:
             self.get_logger().warn('no frame origin yet, cannot fly')
             return

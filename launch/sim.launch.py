@@ -24,7 +24,7 @@ the template). A sensor on a new Gazebo topic also needs that topic bridged,
 which is bridge_extra:="/topic@ros_type[gz_type ..." in the same syntax as
 BRIDGE_TOPICS below. docs/extend/sensors.md has the recipes, docs/data.md the inputs.
 
-This launch also sets the four PX4 parameters the stack needs, through PX4's
+This launch also sets the five PX4 parameters the stack needs, through PX4's
 own px4-param client, as soon as PX4 answers (px4_params to change them,
 px4_bin if PX4 is not at ~/PX4-Autopilot). The clean-clone test found that a
 fresh install never arms: the x500 airframe defaults NAV_DLL_ACT to 2, wait
@@ -111,7 +111,8 @@ def generate_launch_description():
             description='PX4 SITL build bin directory, for px4-param.'),
         DeclareLaunchArgument(
             'px4_params',
-            default_value='NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=2.0 CP_GO_NO_DATA=1',
+            default_value='NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=2.0 CP_GO_NO_DATA=1 '
+                          'COM_RC_OVERRIDE=0',
             description='PX4 parameters set once PX4 answers. The README '
                         'says why each is needed. Empty string to skip.'),
         DeclareLaunchArgument(

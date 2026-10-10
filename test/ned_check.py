@@ -18,7 +18,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne, guarded  # noqa: E402
+from regression import ensure_airborne, guarded, set_param  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -148,7 +148,7 @@ def main():
             break
     if n.pos is None:
         print("  no position"); return 1
-    subprocess.run(["px4-param", "set", "CP_DIST", "2.0"], capture_output=True)
+    set_param("CP_DIST", 2.0)
     print("  alt %.1f, CP_DIST 2.0 throughout" % n.alt)
     if n.alt < 6.0:
         print("  ABORT: not airborne"); return 2

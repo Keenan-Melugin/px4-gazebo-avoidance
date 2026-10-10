@@ -50,16 +50,36 @@ same reason, even though Offboard ignores them for control.
 
 The pilot asks PX4 for Position mode (or Offboard, in plan mode) only after
 something wanted it: start-up, a goal, a mode switch, Nav2 starting to
-drive. It repeats the request once a second until PX4 enters the mode, and
-never again after PX4 has left it. The first version re-asked whenever PX4
-was in any other mode, which pulled the aircraft out of a Land, a Return
-or PX4's own Loiter when the obstacle data stopped. Leaving a mode is now
-PX4's or a person's decision; sending the mode again takes it back.
+drive. It repeats the request once a second until PX4 enters the mode.
+
+When PX4 leaves that mode for one somebody else chose (a Land or a Return
+from the orange ball or a ground station, a failsafe, PX4's own Loiter when
+the obstacle data stops), the pilot yields. It drops its goal, stops
+following Nav2, and holds its sticks exactly still. Not asking for the mode
+back is not enough on its own: PX4's stick override (`COM_RC_OVERRIDE`,
+default 1) returns a multicopter from an automatic mode to Position mode
+whenever the stick input moves faster than `COM_RC_STICK_OV` (30 %, so a
+rate of 0.3 per second), and a pilot flying its goal moves its sticks every
+tick. Dropping them to zero would be a move too, so they are frozen. That
+leaves a window: PX4 switches before the pilot hears about it, and a stick
+change in that fraction of a second still counts. Measured: a LAND sent just
+as the pilot arrived at its goal was cancelled ("Pilot took over using
+sticks" in PX4's log) with the freeze in place. So the launch also sets
+`COM_RC_OVERRIDE` 0, which in the simulator costs nothing: there is no human
+on the sticks to take over. On hardware that is a decision, not a default:
+[hardware.md](hardware.md), item 2. While PX4 is landing, returning or terminating, the pilot also
+refuses new goals. Taking over again is deliberate: publish the mode
+(`brake` or `plan`) on `/avoidance_sim/mode`, which is also what the
+orange ball's mode entries do. The first version re-asked for Position mode
+whenever PX4 was in any other mode, and a Land lasted two seconds.
 
 Plan mode has no collision prevention underneath it, so the pilot watches
-the obstacle histogram itself. If none has arrived for 0.5 s it zeroes
-Nav2's velocity and holds altitude, rather than let the planner drive on a
-costmap that has stopped updating.
+the planner's inputs itself. If no obstacle histogram has arrived for
+0.5 s, or no `/scan` (the costmap's own feed) for 1.0 s once one has been
+seen, it zeroes Nav2's velocity and holds altitude rather than let the
+planner drive on a costmap that has stopped updating. The obstacle node
+keeps republishing a sensor for its `stale_s` (1.0 s) after the last
+message, so a dead camera reaches the hold 1.0 to 1.5 s after it stops.
 
 Collision prevention is horizontal only. Its interface takes a 2D vector and
 the library contains no 3D version, so the climb and descent of a goal are
@@ -222,7 +242,7 @@ so planning round a 10 m wall needs about 10 m of observation distance.
 
 ## PX4's parameters, and why the launch sets them
 
-Four parameters are not at their airframe defaults, and the first was found
+Five parameters are not at their airframe defaults, and the first was found
 by installing on a clean machine, where the aircraft never armed:
 
 | Parameter | Default | Set to | Because |
@@ -231,6 +251,7 @@ by installing on a clean machine, where the aircraft never armed:
 | `NAV_RCL_ACT` | 2 | 0 | The RC-loss failsafe would otherwise fly off to return-to-launch if the sticks paused |
 | `CP_DIST` | -1 | 2.0 | Collision prevention is off until set |
 | `CP_GO_NO_DATA` | 0 | 1 | Move into unobserved directions; see the histogram above |
+| `COM_RC_OVERRIDE` | 1 | 0 | Stick override: moving sticks take a multicopter from an automatic mode back to Position mode. The pilot is the only stick source, so its own stick changes counted as a takeover and cancelled a Land (below) |
 
 > These values are for the simulator only. Three of them switch off a
 > protection a real aircraft needs; [hardware.md](hardware.md) lists what changes before
@@ -241,7 +262,7 @@ The launch sets them through PX4's own `px4-param` client once PX4 answers.
 and they fail for the one that matters. PX4's startup applies them before the
 airframe file and records a value equal to the compiled default (0) as "still
 default", so the airframe's later `set-default 2` wins. Measured on a
-clean machine: three of four applied, `NAV_DLL_ACT` stayed 2.
+clean machine: three of the first four applied, `NAV_DLL_ACT` stayed 2.
 
 ## Two more traps
 

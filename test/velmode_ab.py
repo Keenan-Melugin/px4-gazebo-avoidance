@@ -9,6 +9,12 @@ and then off.
 
 If both are slow, the mapping is wrong. If only the first is slow, the two
 layers are fighting, which is the cost of keeping PX4 braking under Nav2.
+
+Since 2026-10-10 it flies in open air (a leg once ran it into a wall), so
+there is nothing for collision prevention to brake at and both trials should
+match: it now checks speed tracking. The deadlock itself, 0.00 against
+1.24 m/s, was measured in front of box1 and is recorded in
+docs/how-it-works.md.
 """
 import math
 import subprocess
@@ -18,7 +24,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne, guarded  # noqa: E402
+from regression import ensure_airborne, guarded, set_param  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -35,11 +41,7 @@ WANT = 1.0      # m/s forward
 def param(name, value):
     """Set a PX4 parameter; raises if px4-param fails, so a trial never
     runs on a value that was not actually set."""
-    r = subprocess.run(["px4-param", "set", name, str(value)],
-                       capture_output=True, text=True, timeout=20)
-    if r.returncode != 0:
-        raise RuntimeError('px4-param set %s %s failed: %s'
-                           % (name, value, (r.stderr or r.stdout).strip()))
+    set_param(name, value)
 
 
 class AB(Node):
@@ -195,7 +197,8 @@ def main():
     spin(n, 1.0)
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    # In open air both must track: anything slow is the stick mapping.
+    return 0 if min(on, off) >= 0.6 * WANT else 1
 
 
 if __name__ == '__main__':

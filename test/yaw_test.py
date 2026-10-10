@@ -12,6 +12,10 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import ensure_airborne  # noqa: E402
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from regression import guarded  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (QoSProfile, ReliabilityPolicy, HistoryPolicy,
@@ -107,17 +111,14 @@ def main():
     print("  start: alt %.2f  heading %+.1f  nav %s  armed %s"
           % (n.pos[2], math.degrees(n.yaw), n.nav, n.arm))
 
-    if n.pos[2] < 4.0:
-        print("  arming and climbing on the pilot")
-        n.vcmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0, 21196.0)
-        spin(n, 3.0)
-        e0, nn0 = n.pos[1], n.pos[0]
-        n.send(e0, nn0, 7.0)
-        for _ in range(30):
-            spin(n, 1.0)
-            if n.pos[2] > 6.0:
-                break
-        print("  now alt %.2f" % n.pos[2])
+    # Open air for the last check, a 3 m position-only leg east flown while
+    # facing west (blind, the camera looks ahead only). From where the brake
+    # test parks, 2 m from a wall's west face, that leg ended inside the wall.
+    print("  arming if needed and moving to open air")
+    if ensure_airborne(alt=7.0, legs=[(3.0, 0.0)]) is None:
+        print("  could not take off into open air"); return 1
+    spin(n, 2.0)
+    print("  now alt %.2f at east %+.1f north %+.1f" % (n.pos[2], n.pos[1], n.pos[0]))
     if n.pos[2] < 4.0:
         print("  FAILED to get airborne"); return 1
 

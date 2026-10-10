@@ -13,7 +13,9 @@
 # links, and PX4 then says "world not found" for a world that is still here).
 set -euo pipefail
 
-HERE=$(cd "$(dirname "$0")/.." && pwd)
+# Through any symlink to the real script, so that run from an installed copy
+# it still links the checkout, not the copies colcon installed.
+HERE=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
 PX4=${PX4_ROOT:-$HOME/PX4-Autopilot}
 GZ="$PX4/Tools/simulation/gz"
 

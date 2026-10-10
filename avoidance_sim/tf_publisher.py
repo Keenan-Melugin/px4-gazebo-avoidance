@@ -17,7 +17,7 @@ most of what remains is receiving the 100 Hz input, which is PX4's choice
 rather than ours.
 
 Split out of a single-file prototype. The behaviour here is measured, not
-assumed; see the repository README for the numbers and the traps.
+assumed; see docs/how-it-works.md for the numbers and the traps.
 """
 
 import math
