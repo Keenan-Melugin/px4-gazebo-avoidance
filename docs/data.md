@@ -38,7 +38,7 @@ ULog, under the build tree:
 Logging runs until disarm, and in this stack
 the aircraft stays armed for as long as you fly it. A six-minute flight is
 119 MB; one session of about five and a half hours wrote 6.1 GB; two days of
-work left 42 GB in the build tree. `px4-logger off` at any time stops the current log without disarming
+work left 42 GB in the build tree, and four days 64 GB. `px4-logger off` at any time stops the current log without disarming
 (`px4-logger on` starts one), lowering `SDLOG_PROFILE` to 1 drops the replay
 and avoidance sets, and `rootfs/log` can be deleted with PX4 stopped. Nothing
 else references those files.
