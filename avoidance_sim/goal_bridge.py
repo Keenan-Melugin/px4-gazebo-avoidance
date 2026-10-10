@@ -72,13 +72,23 @@ class GoalBridge(Node):
     def on_local(self, m):
         if math.isfinite(m.z):
             self.alt = -m.z
-        if m.xy_global and math.isfinite(m.ref_lat) and math.isfinite(m.ref_lon):
+        # z_global too: ref_alt is the origin's altitude above sea level, and
+        # the reposition altitude is built on it (see on_goal).
+        if (m.xy_global and m.z_global and math.isfinite(m.ref_lat)
+                and math.isfinite(m.ref_lon) and math.isfinite(m.ref_alt)):
             if self.home is None:
                 self.get_logger().info(
                     f'frame origin: {m.ref_lat:.7f}, {m.ref_lon:.7f}')
             self.home = (m.ref_lat, m.ref_lon, m.ref_alt)
 
     def on_goal(self, msg: PoseStamped):
+        if self.mode == 'external':
+            # A test script owns the sticks and expects Position mode. A
+            # reposition would switch PX4 to an auto mode under it.
+            self.get_logger().warn(
+                '2D Goal Pose ignored: EXTERNAL mode, a test script is flying. '
+                'Publish brake on /avoidance_sim/mode first.')
+            return
         if self.mode == 'plan':
             self.to_nav2.publish(msg)
             self.get_logger().info(
@@ -94,7 +104,7 @@ class GoalBridge(Node):
         north = msg.pose.position.y
         alt = self.alt if self.alt and self.alt > 1.0 else 6.0
 
-        lat0, lon0, _ = self.home
+        lat0, lon0, alt0 = self.home
         lat = lat0 + north / 111320.0
         lon = lon0 + east / (111320.0 * math.cos(math.radians(lat0)))
 
@@ -103,9 +113,18 @@ class GoalBridge(Node):
         c.command = VehicleCommand.VEHICLE_CMD_DO_REPOSITION
         c.param1 = -1.0          # default ground speed
         c.param2 = 1.0           # required: PX4 will not switch modes without it
+        # Heading. PX4 applies any finite param4 as the yaw to hold
+        # (navigator_main.cpp, PX4 v1.17.0, the DO_REPOSITION handler), and an
+        # unset VehicleCommand field is 0.0, which is due north. NaN means
+        # "no heading requested".
+        c.param4 = float('nan')
         c.param5 = float(lat)
         c.param6 = float(lon)
-        c.param7 = float(alt)
+        # Altitude above sea level, not above the origin: PX4 copies param7
+        # straight into the global setpoint (navigator_main.cpp:282). Sending
+        # the height above ground was only right while the world's origin
+        # sat at sea level.
+        c.param7 = float(alt0 + alt)
         c.target_system = 1
         c.target_component = 1
         c.source_system = 1

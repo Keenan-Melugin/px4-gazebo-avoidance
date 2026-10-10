@@ -50,7 +50,7 @@ loads any other set, with `config/sensors_example.yaml` as the template, and
 has the full input list).
 
 ```bash
-python3 test/histogram_selftest.py     # 25 checks, bin by bin, in two seconds
+python3 test/histogram_selftest.py     # 24 checks, bin by bin, in two seconds
 ```
 
 Run that before the gate after touching the node. It pins four things. The
@@ -117,7 +117,7 @@ The dev machine, 2026-10-07, the walls world, two bring-ups. PX4 attached to
 the custom model, Gazebo published `/lidar` at 9.6 Hz (10 set), the node
 reported 72 of 72 bins observed, and the merged histogram reached PX4 at
 9.6 Hz with no unknown bin. The gate passed in 230 s: headings within 5.5
-degrees, standoff 2.24 m (2.57 m on the first bring-up), Nav2 round the wall
+degrees, standoff 2.24 m (2.57 m on the first bring-up, 1.97 m on a later run), Nav2 round the wall
 with a 6.5 m excursion, ending 0.5 m from the goal.
 
 Then `CP_GO_NO_DATA` was set to 0, the aircraft faced east, and the pilot

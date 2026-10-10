@@ -27,7 +27,7 @@ avoidance_sim/
   command_marker.py     the orange ball: arm, take off, land, disarm, mode
   world_markers.py      wall outlines, read from the Gazebo world file
   world_geometry.py     the world file's boxes, shared by the markers and the measurement scripts
-  goal_bridge.py        RViz's flat 2D Goal Pose -> PX4 reposition (brake mode only)
+  goal_bridge.py        RViz's flat 2D Goal Pose -> PX4 reposition (brake) or Nav2 goal (plan)
   tf_publisher.py       PX4 odometry -> TF and /odom at 30 Hz
   rviz_bridge.py        the process that hosts the six nodes above, and its executor
 launch/sim.launch.py    the base stack. Arguments: rviz, agent, agent_cmd, world, world_sdf, lidar, sensors, bridge_extra, px4_bin, px4_params

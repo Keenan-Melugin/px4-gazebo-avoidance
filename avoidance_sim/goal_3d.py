@@ -125,7 +125,8 @@ class Goal3D(Node):
             'the heading it will hold. Publish Point places it (a real pick).')
 
     def on_local(self, m):
-        if m.xy_global and math.isfinite(m.ref_lat):
+        if (m.xy_global and m.z_global and math.isfinite(m.ref_lat)
+                and math.isfinite(m.ref_alt)):
             self.origin = (m.ref_lat, m.ref_lon, m.ref_alt)
         self.here = (m.y, m.x, -m.z) if math.isfinite(m.x) else None
 
@@ -201,7 +202,7 @@ class Goal3D(Node):
             self.get_logger().warn(
                 f'refusing: goal altitude {alt:.2f} m is at or below ground')
             return
-        lat0, lon0, _ = self.origin
+        lat0, lon0, alt0 = self.origin
         lat = lat0 + north / 111320.0
         lon = lon0 + east / (111320.0 * math.cos(math.radians(lat0)))
 
@@ -210,9 +211,16 @@ class Goal3D(Node):
         c.command = VehicleCommand.VEHICLE_CMD_DO_REPOSITION
         c.param1 = -1.0
         c.param2 = 1.0                 # required, PX4 will not switch modes without it
+        # The ring's heading, NED radians. PX4 holds any finite param4 as the
+        # yaw (navigator_main.cpp, DO_REPOSITION); left unset it is 0.0,
+        # which turned every unprotected flight to face north whatever the
+        # ring said.
+        c.param4 = float(wrap(math.pi / 2.0 - yaw_of(self.pose.orientation)))
         c.param5 = float(lat)
         c.param6 = float(lon)
-        c.param7 = float(alt)          # this is what makes it a 3D waypoint
+        # Above sea level: PX4 copies param7 into the global setpoint as is
+        # (navigator_main.cpp:282), so the origin's altitude is added.
+        c.param7 = float(alt0 + alt)   # this is what makes it a 3D waypoint
         c.target_system = 1
         c.target_component = 1
         c.source_system = 1

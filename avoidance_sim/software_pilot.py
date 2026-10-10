@@ -12,6 +12,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Twist
 from std_msgs.msg import String
 from px4_msgs.msg import (ManualControlSetpoint,
+    ObstacleDistance,
     OffboardControlMode,
     TrajectorySetpoint,
     VehicleCommand,
@@ -133,6 +134,16 @@ class SoftwarePilot(Node):
     # which is 1.0 s by default, so plan mode keeps streaming zeros when Nav2
     # goes quiet rather than going silent and tripping the failsafe.
     OFFBOARD_WARMUP = 1.2               # s of setpoints before asking for the mode
+    # How often a mode request is repeated while PX4 has not yet entered the
+    # mode. Requesting every 20 ms tick flooded the command topic.
+    MODE_REQ_PERIOD = 1.0               # s
+    # Plan mode has no PX4 collision prevention, so the planner's costmap is
+    # the only thing that sees obstacles. If the obstacle histogram stops
+    # (camera dead, obstacle node down), the costmap stops updating and Nav2
+    # would keep driving on its last picture. Plan mode therefore holds
+    # (zero velocity) when no histogram has arrived for this long. Same
+    # 0.5 s as the obstacle node's own stale timeout.
+    PLAN_SENSOR_TIMEOUT = 0.5           # s
     DEADBAND = 0.4     # m
     ARRIVED = 0.6      # m
 
@@ -172,8 +183,22 @@ class SoftwarePilot(Node):
         self.goal = None         # (north, east, alt)
         self.goal_yaw = None     # NED heading, radians. None = do not turn.
         self.mode = self.MODE_BRAKE
-        self._last_posctl_req = 0.0
+        # A mode is requested only after something asked for it (a goal, a
+        # mode switch, Nav2 starting to drive), and only until PX4 enters it.
+        # Re-requesting whenever PX4 was in any other mode used to pull the
+        # aircraft back out of Land, RTL and failsafes, overriding a human.
+        # Brake is the starting mode, so Position mode is wanted from boot.
+        self._want_posctl = True
+        self._want_offboard = False
+        self._last_posctl_req = -1e9
+        self._last_offboard_req = -1e9
+        self._last_tick_t = None
         self.offboard_since = None
+        # Last obstacle histogram, for the plan-mode dead-sensor hold.
+        self.hist_t = None
+        self._hist_warned = False
+        self.create_subscription(ObstacleDistance, '/fmu/in/obstacle_distance',
+                                 self.on_hist, PX4_QOS)
         self.offboard_pub = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', PX4_QOS)
         self.traj_pub = self.create_publisher(
@@ -223,10 +248,83 @@ class SoftwarePilot(Node):
             self.yaw = m.heading
 
     def on_status(self, m):
+        prev = self.nav
         self.nav = m.nav_state
+        if self.nav == 2:               # NAVIGATION_STATE_POSCTL
+            self._want_posctl = False
+        if self.nav == 14:              # NAVIGATION_STATE_OFFBOARD
+            self._want_offboard = False
+        # Someone else chose an auto mode while a request was still pending:
+        # takeoff (17), land (18), return (5), descend (12), termination (13).
+        # Their choice wins over a request nobody has repeated since.
+        if (self.nav != prev and self.nav in (5, 12, 13, 17, 18)
+                and (self._want_posctl or self._want_offboard)):
+            self._want_posctl = self._want_offboard = False
+            self.get_logger().info(
+                f'PX4 entered nav_state {self.nav}; dropping the pending mode '
+                f'request. A goal or a mode command asks again.')
+        # Once PX4 has entered the mode, leaving it is PX4's or a human's
+        # decision (Land, RTL, a failsafe, a ground station). Say so once and
+        # do not fight it. Sending the mode again re-enters.
+        if prev in (2, 14) and self.nav != prev and self.nav is not None:
+            want = self.MODE_BRAKE if prev == 2 else self.MODE_PLAN
+            if self.mode == want:
+                self.get_logger().warn(
+                    f'PX4 left {"Position" if prev == 2 else "Offboard"} mode '
+                    f'(nav_state {self.nav}). Not asking for it back; publish '
+                    f'{want!r} on /avoidance_sim/mode to re-enter.')
+
+    def on_hist(self, _m):
+        self.hist_t = self.now_s()
+
+    def age_ok(self, t, limit):
+        """True when time t is in the past and no older than limit.
+
+        A negative age means the clock went backwards (Gazebo restarted and
+        /clock reset), so the sample belongs to a previous run. Plain
+        `now - t < limit` counted that as fresh, forever.
+        """
+        if t is None:
+            return False
+        age = self.now_s() - t
+        return 0.0 <= age < limit
+
+    def cmd_fresh(self):
+        return (self.cmd_vel is not None
+                and self.age_ok(self.cmd_vel_t, self.CMD_VEL_TIMEOUT))
+
+    def check_time_jump(self):
+        """Forget everything timed against the old clock after a restart."""
+        now = self.now_s()
+        last, self._last_tick_t = self._last_tick_t, now
+        if last is None or now >= last:
+            return
+        self.get_logger().warn(
+            f'clock went backwards ({last:.1f} s -> {now:.1f} s), so the '
+            f'simulator restarted. Dropping the goal, Nav2 command and mode '
+            f'timers from the previous run.')
+        self.cmd_vel = None
+        self.cmd_vel_t = 0.0
+        self.hist_t = None
+        self.vel_mode = False
+        self.hold_alt = None
+        self.active = False
+        self.goal = None
+        self._last_posctl_req = -1e9
+        self._last_offboard_req = -1e9
+        self._last_yaw = self._last_yaw_t = None
+        if self.mode == self.MODE_PLAN:
+            self.offboard_since = now
 
     def on_goal(self, msg: PoseStamped):
         """Goal arrives in ENU (RViz): x east, y north, z up."""
+        if self.mode == self.MODE_EXTERNAL:
+            # A test script owns the sticks. Flying a goal would need the
+            # stick stream this mode has handed over.
+            self.get_logger().warn(
+                'pilot goal ignored: EXTERNAL mode, a test script owns the '
+                'sticks. Publish brake on /avoidance_sim/mode first.')
+            return
         if self.mode == self.MODE_PLAN:
             # A stick goal has only one meaning: fly it on sticks. Accepting
             # it in plan mode and then ignoring it left PX4 armed in Offboard
@@ -270,8 +368,19 @@ class SoftwarePilot(Node):
                 f'{self.MODE_BRAKE!r}, {self.MODE_PLAN!r} or {self.MODE_EXTERNAL!r}')
             return
         if want == self.mode:
+            # Re-sending the current mode is how a user takes the mode back
+            # after PX4 left it (Land, RTL, a failsafe). Nothing else changes.
+            if want == self.MODE_BRAKE and self.nav != 2:
+                self.get_logger().info('brake re-sent: asking for Position mode')
+                self.request_posctl()
+            elif want == self.MODE_PLAN and self.nav != 14:
+                self.get_logger().info('plan re-sent: asking for Offboard')
+                self._want_offboard = True
+                self.offboard_since = self.now_s()
             return
         self.mode = want
+        self._want_posctl = False
+        self._want_offboard = False
         if want == self.MODE_EXTERNAL:
             self.active = False
             self.goal = None
@@ -284,6 +393,7 @@ class SoftwarePilot(Node):
             self.goal = None
             self.vel_mode = False
             self.offboard_since = self.now_s()
+            self._want_offboard = True
             self.hold_alt = -self.pos[2] if self.pos else None
             self.get_logger().info(
                 'PLAN mode: Offboard, velocity setpoints, planner owns '
@@ -296,6 +406,7 @@ class SoftwarePilot(Node):
             self.request_posctl()
 
     def request_offboard(self):
+        self._last_offboard_req = self.now_s()
         c = VehicleCommand()
         c.timestamp = self.get_clock().now().nanoseconds // 1000
         c.command = VehicleCommand.VEHICLE_CMD_DO_SET_MODE
@@ -349,9 +460,23 @@ class SoftwarePilot(Node):
         m.roll = m.pitch = m.yaw = m.throttle = 0.0
         self.pub.publish(m)
 
-        fresh = (self.cmd_vel is not None
-                 and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+        fresh = self.cmd_fresh()
         vx, vy, wz = self.cmd_vel if fresh else (0.0, 0.0, 0.0)
+
+        # No PX4 collision prevention in Offboard, so no obstacle data means
+        # no horizontal motion. Altitude hold below still runs.
+        if fresh and not self.age_ok(self.hist_t, self.PLAN_SENSOR_TIMEOUT):
+            vx = vy = wz = 0.0
+            if not self._hist_warned:
+                self._hist_warned = True
+                self.get_logger().warn(
+                    'PLAN mode: no obstacle histogram for '
+                    f'{self.PLAN_SENSOR_TIMEOUT:.1f} s (camera or obstacle node '
+                    'down). Holding position instead of flying on a frozen '
+                    'costmap.')
+        elif self._hist_warned and self.age_ok(self.hist_t, self.PLAN_SENSOR_TIMEOUT):
+            self._hist_warned = False
+            self.get_logger().info('PLAN mode: obstacle data back, Nav2 driving')
 
         t = TrajectorySetpoint()
         t.timestamp = self.get_clock().now().nanoseconds // 1000
@@ -392,10 +517,14 @@ class SoftwarePilot(Node):
         t.yawspeed = float(-wz) if abs(wz) > 0.02 else 0.0
         self.traj_pub.publish(t)
 
-        if (self.offboard_since is not None
-                and self.now_s() - self.offboard_since > self.OFFBOARD_WARMUP):
-            if self.nav != 14:          # NAVIGATION_STATE_OFFBOARD
-                self.request_offboard()
+        # Ask until PX4 is in Offboard, at most once a second, and never
+        # again after it has entered and left: see on_status.
+        now = self.now_s()
+        if (self._want_offboard and self.nav != 14
+                and self.offboard_since is not None
+                and now - self.offboard_since > self.OFFBOARD_WARMUP
+                and now - self._last_offboard_req > self.MODE_REQ_PERIOD):
+            self.request_offboard()
 
     def on_cmd_vel(self, m):
         self.cmd_vel = (m.linear.x, m.linear.y, m.angular.z)
@@ -416,6 +545,8 @@ class SoftwarePilot(Node):
         return math.copysign(min(1.0, u), v)
 
     def request_posctl(self):
+        self._want_posctl = True
+        self._last_posctl_req = self.now_s()
         c = VehicleCommand()
         c.timestamp = self.get_clock().now().nanoseconds // 1000
         c.command = VehicleCommand.VEHICLE_CMD_DO_SET_MODE
@@ -434,6 +565,7 @@ class SoftwarePilot(Node):
         self.get_logger().info('pilot stopped, holding position')
 
     def tick(self):
+        self.check_time_jump()
         if self.mode == self.MODE_EXTERNAL:
             return
         if self.mode == self.MODE_PLAN:
@@ -449,8 +581,7 @@ class SoftwarePilot(Node):
         m.data_source = ManualControlSetpoint.SOURCE_MAVLINK_0
         m.roll = m.pitch = m.yaw = m.throttle = 0.0
 
-        fresh = (self.cmd_vel is not None
-                 and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+        fresh = self.cmd_fresh()
 
         if fresh and self.pos is not None:
             # ---- Nav2 is driving ----
@@ -593,19 +724,19 @@ class SoftwarePilot(Node):
         # Keep asking for Position mode until PX4 is in it. One request on
         # the mode switch was not enough: if PX4 was still in Offboard and
         # declined, brake mode sat there streaming sticks that Offboard
-        # ignores, forever. Plan mode already re-asks for Offboard the same way.
-        if self.nav is not None and self.nav != 2:
-            now = self.now_s()
-            if now - self._last_posctl_req > 2.0:
-                self._last_posctl_req = now
-                self.request_posctl()
+        # ignores, forever. But ask only while something wants Position mode
+        # and PX4 has not yet entered it. The first version asked whenever PX4
+        # was in any other mode, which pulled the aircraft out of Land, RTL
+        # and failsafes: a human's Land lasted two seconds.
+        if (self._want_posctl and self.nav is not None and self.nav != 2
+                and self.now_s() - self._last_posctl_req > self.MODE_REQ_PERIOD):
+            self.request_posctl()
 
     def report(self):
         if self.mode == self.MODE_PLAN:
             if self.pos is None:
                 return
-            fresh = (self.cmd_vel is not None
-                     and (self.now_s() - self.cmd_vel_t) < self.CMD_VEL_TIMEOUT)
+            fresh = self.cmd_fresh()
             vx, vy, _ = self.cmd_vel if fresh else (0.0, 0.0, 0.0)
             self.get_logger().info(
                 f'PLAN nav={self.nav}{"" if self.nav == 14 else " (not OFFBOARD yet)"} '

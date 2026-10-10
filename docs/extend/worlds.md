@@ -76,7 +76,7 @@ The dev machine, 2026-10-07: the whole gate passed in 220 s with nothing
 changed but `--world pillars`. Brake half: flying east from the origin at
 full stick, the aircraft braked 2.04 m from `wall_east`. On the way, the two
 pillars 4 m either side of the line pushed it 3.9 m north (`CP_GUIDE_ANG`
-again, toward the freer side). Plan half: the 6 m `wall_north` from 13.5 m
+again, toward the freer side). Plan half: the 6 m `wall_north` from 14.5 m
 back, reached with a 4.2 m sideways excursion and 40 plans, against 6.2 to
 7.6 m round the walls world's 10 m wall. Headings within 5.6 degrees, as on
 walls.

@@ -34,7 +34,7 @@ from px4_msgs.msg import VehicleCommand
 from std_msgs.msg import String
 
 from avoidance_sim import world_geometry
-from regression import R, spin, NAV_POSCTL
+from regression import R, guarded, spin, NAV_POSCTL
 
 
 def main():
@@ -110,4 +110,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

@@ -88,8 +88,8 @@ produce silence, not an error. Time can come from the system clock or from a
 Everything on the ROS side of this repo is a node. The obstacle node is one
 subscriber, one publisher and ten lines of maths in the middle. The software
 pilot is a timer that publishes sticks at 50 Hz. Then there are the six
-small nodes behind RViz's menus and markers, the TF publisher, and Nav2's
-servers. `sim.launch.py` starts them with `use_sim_time` so they follow
+small nodes in the RViz process (the menus, the markers and the TF
+publisher among them) and Nav2's servers. `sim.launch.py` starts them with `use_sim_time` so they follow
 Gazebo's clock. The PX4 topics are all under `/fmu/out/` (from PX4) and
 `/fmu/in/` (to PX4), named after the FMU, the flight management unit that
 PX4 runs on. They use the sensor-data QoS profile, which is "best effort":
@@ -133,9 +133,10 @@ after [install.md](install.md): each one needs the stack running.
    Exercise: write a node that subscribes to the histogram and prints the
    bearing and range of the nearest obstacle once a second.
 3. A node driven by a timer: `avoidance_sim/software_pilot.py`, 50 Hz.
-   Exercise: change the rate and watch what PX4 does at 5 Hz. PX4 declares
-   the RC (radio control) link lost after `COM_RC_LOSS_T`, 0.5 s without
-   sticks. Put it back.
+   Exercise: change the rate to 1 Hz and watch PX4 declare the RC (radio
+   control) link lost: `COM_RC_LOSS_T` is 0.5 s without sticks, so anything
+   slower than 2 Hz trips it. At 5 Hz nothing visible happens, which is the
+   other half of the lesson. Put it back to 50 Hz.
 4. QoS: `MODE_QOS` in `avoidance_sim/frames.py`. Exercise: publish the mode
    with `ros2 topic pub` without the transient-local flag (the setting that
    keeps the last message for subscribers that join late) and see that the
@@ -311,8 +312,9 @@ the scene. A config file saves which displays are open and how they look.
 
 It is the cockpit. It draws the depth cloud, the wall outlines, the aircraft
 marker, the scan when the lidar is on, and Nav2's path and costmaps. It holds
-two interactive markers: the green goal ball with its menu (brake or plan
-mode, fly here) and the orange command ball (arm, take off, land).
+two interactive markers: the green goal ball with its menu (fly here with
+avoidance on or off, stop, snap to the aircraft) and the orange command ball (arm, take off, land, and the
+brake or plan mode switch).
 `config/avoidance.rviz` is the layout. RViz keeps no data; it is a window.
 
 ### Learn it here

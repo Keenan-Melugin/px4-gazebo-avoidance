@@ -12,7 +12,7 @@ of free disk, 8 GB of RAM, an internet connection, and roughly an hour and a
 half. The README has the measured hardware table. Nothing is assumed to be
 installed: step 0 starts from the operating system.
 
-The stack has six layers, and the scripts cover three of them:
+The stack has five layers, and the scripts cover two of them:
 
 | Layer | What | Installed by |
 |---|---|---|
@@ -208,7 +208,8 @@ git apply ~/px4-gazebo-avoidance/patches/px4-camera-res.patch
 ```
 
 This drops the simulated depth camera from 640x480 at 30 Hz to 320x240 at
-15 Hz. Every measurement in this repository was taken with it applied, so
+15 Hz. The 15 Hz is the setting; the cloud arrives at 6 to 12 Hz on the
+development machine, because rendering depth is the bottleneck. Every measurement in this repository was taken with it applied, so
 without it your numbers will not match the README, and on a slower machine it
 is the difference between a usable frame rate and not. It applies inside the
 submodule, not at the PX4 root, and leaves it dirty.
@@ -255,6 +256,10 @@ each one as `[px4_params]`:
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Off until set |
 | `CP_GO_NO_DATA=1` | Let PX4 move into directions the camera cannot see. The camera sees 73 of 360 degrees |
 
+> These values are for the simulator only. Three of them switch off a
+> protection a real aircraft needs; [hardware.md](hardware.md) lists what changes before
+> any real flight.
+
 [how-it-works.md](how-it-works.md) says why each is what it is, and why they
 are set this way rather than typed at `pxh>`. If PX4 lives somewhere other
 than `~/PX4-Autopilot`, pass `px4_bin:=/path/to/build/px4_sitl_default/bin`.
@@ -266,7 +271,8 @@ has that and the aircraft with the extra lidar.
 
 Within about 30 seconds of terminal 2 starting, terminal 1 prints
 `Ready for takeoff!`. Before the parameters are set it repeats
-`Preflight Fail: No connection to the GCS`, which is expected; if it keeps
+`Preflight Fail: No connection to the GCS` (ground control station, such as
+QGroundControl), which is expected; if it keeps
 repeating that afterwards, the launch could not reach `px4-param` and said so.
 
 In a third terminal, sourced the same way:
@@ -280,7 +286,7 @@ px4-listener obstacle_distance                      # the histogram PX4 is recei
 
 The last one is the single most useful check: if it prints nothing,
 perception is not reaching PX4 and nothing downstream can work. Terminal 2
-also logs `camera sees 15 of 72 bins` from the obstacle node at startup.
+also logs `sensors see 15 of 72 bins` from the obstacle node at startup.
 
 RViz is up with the aircraft, the walls and a green goal ball. Go to
 [fly.md](fly.md).
@@ -291,7 +297,7 @@ RViz is up with the aircraft, the walls and a green goal ball. Go to
 |---|---|
 | Windows 11, WSL2, Ubuntu 24.04 | Tested: the development machine and the clean-clone test. Needs `GALLIUM_DRIVER=d3d12` |
 | Ubuntu 24.04 on real hardware | Untested. Nothing here is WSL-specific; set no renderer variable, Mesa picks the driver itself |
-| Ubuntu 24.04 in VMware Workstation 17 on Windows | Tested for install and run, 6 cores and 8 GB: every step passes with the two VMware lines below, the aircraft flies and holds headings. Avoidance not validated: the virtual GPU renders the depth camera at 2 Hz. See below |
+| Ubuntu 24.04 in VMware Workstation 17 on Windows | Tested for install and run, 6 cores and 8 GB: every step passes with the two VMware lines in step 2, the aircraft flies and holds headings. Avoidance not validated: the virtual GPU renders the depth camera at 2 Hz. See step 0 |
 | Raspberry Pi 5, Ubuntu 24.04 arm64 | Untested. See below |
 | Raspberry Pi OS | No. No ROS 2 Jazzy packages exist for Debian |
 

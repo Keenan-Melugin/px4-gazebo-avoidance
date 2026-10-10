@@ -12,7 +12,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne  # noqa: E402
+from regression import ensure_airborne, guarded, set_pilot_mode  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (QoSProfile, ReliabilityPolicy, HistoryPolicy,
                        DurabilityPolicy)
@@ -75,6 +75,10 @@ def main():
     # already flying, and on a fresh stack measured nothing (2026-10-10).
     if ensure_airborne() is None:
         print("  could not arm and take off"); return 1
+    # This script streams its own sticks. With the pilot streaming too,
+    # two publishers interleave on one PX4 input and the zero-stick hold
+    # measures the pilot, not PX4. guarded() puts brake back afterwards.
+    set_pilot_mode('external')
     n = H()
     # Up to 20 s for the first data. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had
@@ -139,4 +143,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

@@ -48,6 +48,19 @@ Fifty hertz is not arbitrary. PX4 declares RC loss after `COM_RC_LOSS_T`,
 0.5 s, so the stream must never pause. Plan mode streams zero sticks for the
 same reason, even though Offboard ignores them for control.
 
+The pilot asks PX4 for Position mode (or Offboard, in plan mode) only after
+something wanted it: start-up, a goal, a mode switch, Nav2 starting to
+drive. It repeats the request once a second until PX4 enters the mode, and
+never again after PX4 has left it. The first version re-asked whenever PX4
+was in any other mode, which pulled the aircraft out of a Land, a Return
+or PX4's own Loiter when the obstacle data stopped. Leaving a mode is now
+PX4's or a person's decision; sending the mode again takes it back.
+
+Plan mode has no collision prevention underneath it, so the pilot watches
+the obstacle histogram itself. If none has arrived for 0.5 s it zeroes
+Nav2's velocity and holds altitude, rather than let the planner drive on a
+costmap that has stopped updating.
+
 Collision prevention is horizontal only. Its interface takes a 2D vector and
 the library contains no 3D version, so the climb and descent of a goal are
 unprotected. This is 3D waypoints with 2D avoidance.
@@ -81,12 +94,13 @@ Unobserved bins must be `UINT16_MAX`. PX4 then applies `CP_GO_NO_DATA`. At
 its default of 0 it refuses to accelerate into any unobserved direction,
 which with a 73 degree camera means only forwards. At 1 it moves into them.
 This stack sets 1, which is why the aircraft must face where it goes.
-The `frame` field must be `MAV_FRAME_BODY_FRD`, or bin zero means north
+The `frame` field must be `MAV_FRAME_BODY_FRD` (the body frame: x forward,
+y right, z down), or bin zero means north
 rather than forward.
 
-A 640x480 cloud is 307,200 points, and processing them all took about 400 ms
+A 640x480 cloud, the camera before the patch in install step 4, is 307,200 points, and processing them all took about 400 ms
 per frame, which starved the node to 2 Hz. Every eighth point is plenty for
-72 bins. The cloud from Gazebo's bridge is FLU, x forward, not the ROS
+72 bins. The cloud from Gazebo's bridge is FLU (forward, left, up), x forward, not the ROS
 optical convention; measured by reading the extents while facing a wall.
 
 Standoff is a brake, not a hold: at `CP_DIST 2.0` the closest approach over
@@ -102,8 +116,9 @@ four numbers that encode a 3D rotation without the singularities of roll,
 pitch and yaw. Converting it needs a rotation applied on both sides of the
 quaternion, or the aircraft renders upside down in RViz while its heading
 still reads correctly. `frames.py` holds both constant rotations as plain
-quaternion products, checked against SciPy, the scientific Python library,
-to 1e-15.
+quaternion products, checked against SciPy, the scientific Python library:
+they agree to within 1e-7, the precision of the constants written into
+`frames.py`.
 
 Stick XY is in the heading frame, not NED: PX4 rotates stick input by the
 current yaw before using it. So the pilot rotates its position error by the
@@ -216,6 +231,10 @@ by installing on a clean machine, where the aircraft never armed:
 | `NAV_RCL_ACT` | 2 | 0 | The RC-loss failsafe would otherwise fly off to return-to-launch if the sticks paused |
 | `CP_DIST` | -1 | 2.0 | Collision prevention is off until set |
 | `CP_GO_NO_DATA` | 0 | 1 | Move into unobserved directions; see the histogram above |
+
+> These values are for the simulator only. Three of them switch off a
+> protection a real aircraft needs; [hardware.md](hardware.md) lists what changes before
+> any real flight.
 
 The launch sets them through PX4's own `px4-param` client once PX4 answers.
 `PX4_PARAM_<NAME>` environment variables on the PX4 command would be neater,

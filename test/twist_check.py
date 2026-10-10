@@ -16,6 +16,10 @@ import math
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import guarded  # noqa: E402
 
 from avoidance_sim import world_geometry
 from rclpy.node import Node
@@ -210,4 +214,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

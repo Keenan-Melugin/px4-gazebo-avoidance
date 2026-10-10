@@ -352,11 +352,15 @@ class ObstacleDistancePublisher(Node):
         for s in self.sources:
             if not s.valid or s.last_t is None:
                 continue
-            if now - s.last_t > self.stale_s:
+            # A negative age means the clock went backwards (Gazebo restarted,
+            # /clock reset), so the data is from the previous run. It is stale,
+            # not fresh forever, which is what `age > stale_s` alone made it.
+            age = now - s.last_t
+            if age < 0.0 or age > self.stale_s:
                 if not s.warned_stale:
                     s.warned_stale = True
                     self.get_logger().warn(
-                        f'{s.name}: no data for {now - s.last_t:.1f} s, dropped from '
+                        f'{s.name}: no data for {age:.1f} s, dropped from '
                         f'the histogram. Its bins report UNKNOWN; if it was the last '
                         f'live sensor nothing is published and PX4 holds rather than '
                         f'fly on a frozen histogram.')

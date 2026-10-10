@@ -18,6 +18,10 @@ import math
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import guarded  # noqa: E402
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
@@ -198,6 +202,42 @@ def main():
 
     rclpy.init()
     n = N2()
+    try:
+        return fly(n, start, goal, alt, wall_north, wall)
+    finally:
+        # Every exit, including an ABORT, a timeout and Ctrl-C, leaves nothing
+        # driving. A Nav2 goal left running kept publishing /cmd_vel after
+        # this script ended, and the next script's goals were overridden by
+        # it: the late-session failures that moved between scripts.
+        cleanup(n)
+        n.destroy_node()
+        rclpy.try_shutdown()
+
+
+def cancel_all(n, wait=3.0):
+    """Cancel every Nav2 navigate_to_pose goal. True if the request was sent."""
+    try:
+        from action_msgs.srv import CancelGoal
+        cli = n.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        if cli.wait_for_service(timeout_sec=5.0):
+            cli.call_async(CancelGoal.Request())     # blank request = cancel all
+            spin(n, wait)
+            return True
+    except Exception as exc:
+        print("  could not cancel: %s" % exc)
+    return False
+
+
+def cleanup(n):
+    print("  cleanup: cancelling Nav2 goals, back to BRAKE, STOP")
+    cancel_all(n)
+    n.set_mode('brake')
+    spin(n, 2.0)
+    n.stop_pilot()
+    spin(n, 2.0)
+
+
+def fly(n, start, goal, alt, wall_north, wall):
     # Up to 20 s for the first position. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had not
     # finished and the test quit with "no position".
@@ -211,19 +251,10 @@ def main():
     # Cancel anything Nav2 is still driving. Without this a goal left running
     # from a previous attempt keeps publishing cmd_vel, the pilot stays in
     # velocity mode, and the repositioning goal below is silently ignored.
-    if n.ac.wait_for_server(timeout_sec=10.0):
-        fut = n.ac._cancel_goal_async if False else None
-        try:
-            from action_msgs.srv import CancelGoal
-            cli = n.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
-            if cli.wait_for_service(timeout_sec=5.0):
-                req = CancelGoal.Request()          # blank = cancel all
-                cli.call_async(req)
-                print("  cancelled any running Nav2 goal")
-                spin(n, 3.0)
-        except Exception as exc:
-            print("  could not cancel: %s" % exc)
-
+    if n.ac.wait_for_server(timeout_sec=10.0) and cancel_all(n):
+        print("  cancelled any running Nav2 goal")
+    n.set_mode('brake')
+    spin(n, 1.0)
     n.stop_pilot()
     spin(n, 5.0)
     if not n.armed:
@@ -309,7 +340,6 @@ def main():
         print("  ABORT: plan mode did not reach Offboard, so this would measure")
         print("         the stick path with collision prevention live, which is")
         print("         the deadlock already recorded.")
-        n.set_mode('brake')
         return 2
 
     print("  sending Nav2 goal: east %.1f north %.1f (wall at north %.1f)"
@@ -381,13 +411,8 @@ def main():
         print("           %.1f. Either the detour is longer than the time" % wall_north)
         print("           allowed, or it is stuck against the wall.")
     print()
-    print("  back to BRAKE mode")
-    n.set_mode('brake')
-    spin(n, 3.0)
-    n.destroy_node()
-    rclpy.try_shutdown()
     return rc
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

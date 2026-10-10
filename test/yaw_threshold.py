@@ -12,7 +12,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne, set_pilot_mode  # noqa: E402
+from regression import ensure_airborne, guarded, set_pilot_mode  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (QoSProfile, ReliabilityPolicy, HistoryPolicy,
                        DurabilityPolicy)
@@ -120,4 +120,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

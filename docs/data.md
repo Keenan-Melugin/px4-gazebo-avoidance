@@ -160,8 +160,8 @@ is the `PoseStamped` message from ROS's standard `geometry_msgs` package.
 | Input | Type | Meaning |
 |---|---|---|
 | `/avoidance_sim/pilot_goal` | `geometry_msgs/PoseStamped` | Fly here in brake mode. `x` east, `y` north, `z` up, metres, in `odom`. `frame_id` `odom` holds position only; `odom+yaw` also holds the heading in `orientation` (ENU yaw); `STOP` drops the goal and centres the sticks |
-| `/avoidance_sim/mode` | `std_msgs/String`, reliable, transient local | `brake` or `plan`. A volatile publisher never reaches the pilot's subscriber |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | RViz's 2D Goal Pose, brake mode only; becomes a PX4 reposition |
+| `/avoidance_sim/mode` | `std_msgs/String`, reliable, transient local | `brake` or `plan`, or `external` to hand the stick stream to a test script. Sending the current mode again asks PX4 for it again. A volatile publisher never reaches the pilot's subscriber |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | RViz's 2D Goal Pose. In brake mode a PX4 reposition; in plan mode forwarded to Nav2; ignored in external mode |
 | `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | A planned route, plan mode only |
 | `/cmd_vel` | `geometry_msgs/Twist` | Nav2's output into the pilot; publishing it by hand drives velocity mode |
 | `/fmu/in/vehicle_command` | `px4_msgs/VehicleCommand` | Arm (command 400, `param1` 1, `param2` 21196 to force), takeoff (22), land (21); `target_system` 1 |
@@ -210,12 +210,13 @@ topic bridged, in `bridge_extra`, in the bridge's own syntax
 ### PX4 parameters
 
 Three ways, in order of persistence. At start,
-`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1"` on the
+`px4_params:="NAV_DLL_ACT=0 NAV_RCL_ACT=0 CP_DIST=3.0 CP_GO_NO_DATA=1"` (simulator
+values; see [hardware.md](hardware.md) before any real flight) on the
 launch (the launch applies them through `px4-param` once PX4 answers, which
 is the only route that reaches every parameter; `scripts/px4_params.sh`
 says why). While running, `px4-param set CP_DIST 3.0`, or `param set` at the
-`pxh>` prompt, PX4's own shell in terminal 1. To keep a value across
-restarts, `param save` at `pxh>`; it writes
+`pxh>` prompt, PX4's own shell in terminal 1. Either one keeps the value
+across restarts with no `param save`: PX4 writes every change to
 `build/px4_sitl_default/rootfs/parameters.bson` (PX4's binary parameter file), which the next start
 loads, and which is how the development machine came to differ from a fresh
 install for months. `PX4_PARAM_NAME=value` in PX4's environment is applied

@@ -81,12 +81,17 @@ enough, it finds the wall's end and goes round. That is collision prevention
 steering the push toward free space (`CP_GUIDE_ANG`, 30 degrees), not a
 failure; `STOP` on the green ball ends it. With `CP_DIST` set, PX4 forces
 Loiter (its hold-position mode) if the obstacle stream stops for five
-seconds, so stopping the ROS side mid-flight changes the aircraft's mode. And
+seconds, so stopping the ROS side mid-flight changes the aircraft's mode.
+The pilot does not take it back, because Loiter, Land and Return can be a
+safety decision; `MODE: brake` on the orange ball asks for Position mode
+again. And
 after a landing it disarms by itself after two seconds.
 
 ## Plan mode: Nav2 plans, PX4 obeys
 
-Start the stack with the Nav2 launch instead:
+Stop the base stack first (Ctrl-C in its terminal), then start the Nav2
+launch instead. It starts the base stack itself, and two of them collide on
+the agent's UDP port 8888:
 
 ```bash
 ros2 launch avoidance_sim nav2.launch.py

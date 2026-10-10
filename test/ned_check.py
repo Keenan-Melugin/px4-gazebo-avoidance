@@ -18,7 +18,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne  # noqa: E402
+from regression import ensure_airborne, guarded  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -166,8 +166,8 @@ def main():
     spin(n, 2.0)
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    return 0 if all(results) else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

@@ -42,6 +42,8 @@ MODE_QOS = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
 # The wall ahead comes from the world file (--world), through the same parser
 # RViz's wall markers use, so the test and the picture always agree.
 CP_DIST = 2.0
+STANDOFF_UNDER = 0.25   # m inside CP_DIST still counted a pass
+STANDOFF_OVER = 0.7     # m outside it; recorded runs reach 2.60
 NAV_POSCTL = 2
 
 
@@ -61,6 +63,142 @@ def bearing(e0, n0, e1, n1):
 
 def wrap(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+def leg_clearance(boxes, a, b, step=0.5):
+    """Smallest distance to any box along the straight leg a -> b, (east, north).
+
+    The start point is skipped: the aircraft is already there, possibly
+    parked close to a wall.
+    """
+    n = max(1, int(math.hypot(b[0] - a[0], b[1] - a[1]) / step))
+    return min(world_geometry.clearance(boxes, a[0] + (b[0] - a[0]) * k / n,
+                                        a[1] + (b[1] - a[1]) * k / n)
+               for k in range(1, n + 1))
+
+
+def route(boxes, a, b, min_clear=2.5, extent=20.0, step=1.0):
+    """Legs from a to b keeping min_clear from every box: [b], [w, b] or None.
+
+    2.5 m is the 2.0 m standoff plus a margin. A leg that comes closer gets
+    braked by collision prevention part way, which is how the brake test
+    used to start from the wrong line: measured 2026-10-10, moving south from
+    where the plan-mode half parks it (north 10), box2 stopped the move at
+    north 7.8, the test flew its brake from there, 2.1 m inside box1's end,
+    and slid round the end to east 100.
+
+    A shortest path over a 1 m grid of clear points, then cut down to the
+    fewest straight legs that stay clear. Returns the legs' end points.
+    """
+    if leg_clearance(boxes, a, b) >= min_clear:
+        return [b]
+    import heapq
+    x0 = min(a[0], b[0]) - extent
+    y0 = min(a[1], b[1]) - extent
+    nx = int((abs(a[0] - b[0]) + 2 * extent) / step) + 1
+    ny = int((abs(a[1] - b[1]) + 2 * extent) / step) + 1
+
+    def pt(c):
+        return (x0 + c[0] * step, y0 + c[1] * step)
+
+    def cell(p):
+        return (int(round((p[0] - x0) / step)), int(round((p[1] - y0) / step)))
+
+    free = {}
+
+    def ok(c):
+        if c not in free:
+            p = pt(c)
+            free[c] = (0 <= c[0] < nx and 0 <= c[1] < ny
+                       and world_geometry.clearance(boxes, p[0], p[1]) >= min_clear)
+        return free[c]
+
+    start, goal = cell(a), cell(b)
+    free[start] = free[goal] = True
+    dist, prev, heap = {start: 0.0}, {}, [(0.0, start)]
+    while heap:
+        d, c = heapq.heappop(heap)
+        if c == goal:
+            break
+        if d > dist.get(c, float('inf')):
+            continue
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                nb = (c[0] + dx, c[1] + dy)
+                if (dx or dy) and ok(nb):
+                    nd = d + math.hypot(dx, dy) * step
+                    if nd < dist.get(nb, float('inf')):
+                        dist[nb], prev[nb] = nd, c
+                        heapq.heappush(heap, (nd, nb))
+    if goal not in dist:
+        return None
+    path = [goal]
+    while path[-1] != start:
+        path.append(prev[path[-1]])
+    path = [a] + [pt(c) for c in reversed(path[:-1])][:-1] + [b]
+    # Shortcut: from each point, jump to the furthest point still in sight.
+    legs, i = [], 0
+    while i < len(path) - 1:
+        j = len(path) - 1
+        while j > i + 1 and leg_clearance(boxes, path[i], path[j]) < min_clear:
+            j -= 1
+        legs.append(path[j])
+        i = j
+    return legs
+
+
+def pick_line(boxes, east, north, alt=7.0):
+    """The wall to brake at and the north of the line to fly at it on.
+
+    The wall straight ahead (east) if there is one, otherwise every wall wide
+    enough, nearest first. A line qualifies if it is 4 m inside the wall's
+    ends (closer, and the 30 degree guidance slides round the end instead of
+    braking), its 8 m run-up point is 2.5 m clear of every box, and the run
+    to the face passes 2.5 m clear of every other box. Returns (box, north),
+    or (None, None) if no wall in the world has such a line.
+    """
+    ahead = [b for _, b in world_geometry.faces_ahead(boxes, east, north, alt,
+                                                      'east', margin=0.5)]
+    spans = sorted((x for x in boxes
+                    if not x.rotated and x.sy >= 8.0 and x.z_min <= alt <= x.z_max),
+                   key=lambda x: math.hypot(
+                       x.x_min - 8.0 - east,
+                       min(max(north, x.y_min + 4.0), x.y_max - 4.0) - north))
+    for b in ahead[:1] + [x for x in spans if x not in ahead[:1]]:
+        lo, hi = b.y_min + 4.0, b.y_max - 4.0
+        if lo > hi:
+            continue
+        others = [x for x in boxes if x is not b]
+        for t in sorted((lo + 0.5 * i for i in range(int((hi - lo) / 0.5) + 1)),
+                        key=lambda t: abs(t - north)):
+            if (world_geometry.clearance(boxes, b.x_min - 8.0, t) >= 2.5
+                    and leg_clearance(others, (b.x_min - 8.0, t), (b.x_min, t)) >= 2.5):
+                return b, t
+    return None, None
+
+
+def fly_route(n, boxes, dest, alt=7.0):
+    """Fly to dest (east, north) by a clear route, facing each leg.
+
+    Facing matters: the camera sees 73 degrees ahead and nothing else.
+    Returns True if it arrived within 0.8 m, False if it did not or no
+    clear route exists.
+    """
+    legs = route(boxes, (n.pos[1], n.pos[0]), dest)
+    if legs is None:
+        print("    no route to east %+.1f north %+.1f that stays 2.5 m from every box"
+              % dest)
+        return False
+    if len(legs) > 1:
+        print("    direct path is blocked; going via east %+.1f north %+.1f" % legs[0])
+    for e, no in legs:
+        n.send(e, no, alt, bearing(n.pos[1], n.pos[0], e, no))
+        for _ in range(60):
+            spin(n, 1.0)
+            if abs(n.pos[1] - e) < 0.8 and abs(n.pos[0] - no) < 0.8:
+                break
+    spin(n, 2.0)
+    return abs(n.pos[1] - dest[0]) < 0.8 and abs(n.pos[0] - dest[1]) < 0.8
 
 
 class R(Node):
@@ -136,6 +274,55 @@ def set_pilot_mode(mode):
     n.mode.publish(m)
     spin(n, 1.5)
     n.destroy_node()
+
+
+def leave_safe(cancel_nav2=True):
+    """Brake mode, any Nav2 goal cancelled, and a STOP goal: a known state.
+
+    Safe to call with or without rclpy initialised; it initialises and shuts
+    down around itself when it has to. A script that ended in external or
+    plan mode, or with a Nav2 goal still running, used to hand that state to
+    the next script, and the next script's goals were overridden by it.
+    """
+    own = not rclpy.ok()
+    if own:
+        rclpy.init()
+    n = R()
+    try:
+        if cancel_nav2:
+            from action_msgs.srv import CancelGoal
+            cli = n.create_client(CancelGoal,
+                                  '/navigate_to_pose/_action/cancel_goal')
+            if cli.wait_for_service(timeout_sec=1.0):
+                cli.call_async(CancelGoal.Request())   # blank = cancel all
+        m = String()
+        m.data = 'brake'
+        spin(n, 1.0)
+        n.mode.publish(m)
+        t0 = time.time()
+        while n.goal.get_subscription_count() == 0 and time.time() - t0 < 5.0:
+            spin(n, 0.1)
+        stop = PoseStamped()
+        stop.header.frame_id = 'STOP'
+        n.goal.publish(stop)
+        spin(n, 1.5)
+    finally:
+        n.destroy_node()
+        if own:
+            rclpy.try_shutdown()
+
+
+def guarded(run):
+    """Run a test's body between two leave_safe() calls, whatever it does.
+
+    The body owns rclpy.init() and shutdown as before. A Ctrl-C or an
+    exception still gets the closing leave_safe().
+    """
+    leave_safe()
+    try:
+        return run()
+    finally:
+        leave_safe()
 
 
 def ensure_airborne(alt=7.0, goto=None):
@@ -216,9 +403,11 @@ def main():
           % (n.pos[0], n.pos[1], n.pos[2], n.arm))
     fails = 0
 
-    # Brake mode, and wait for PX4 to actually be in Position mode. The pilot
-    # re-requests it every two seconds, so this converges; if it does not,
-    # the test still runs and the numbers will say so.
+    # Brake mode, and wait for PX4 to actually be in Position mode. Sending
+    # brake asks for Position mode even when the pilot is already in brake
+    # (that is how a user takes it back after a Land or a failsafe), and the
+    # pilot repeats the request each second until PX4 enters it. If it never
+    # does, the test still runs and the numbers will say so.
     m = String()
     m.data = 'brake'
     n.mode.publish(m)
@@ -267,28 +456,24 @@ def main():
     # half parks the aircraft at that end (north 10), so first move well
     # inside the span of the wall ahead: 4 m clear of either end.
     east, north = n.pos[1], n.pos[0]
-    ahead = world_geometry.faces_ahead(boxes, east, north, 7.0, 'east', margin=0.5)
-    b = ahead[0][1] if ahead else None
+    b, target = pick_line(boxes, east, north)
+    placed = True
     if b is None:
-        spans = [x for x in boxes
-                 if not x.rotated and x.x_min > east and x.sy >= 2.5
-                 and x.z_min <= 7.0 <= x.z_max]
-        if spans:
-            b = min(spans, key=lambda x: abs(
-                min(max(north, x.y_min + 1.0), x.y_max - 1.0) - north))
-    if b is not None:
-        lo, hi = b.y_min + 4.0, b.y_max - 4.0
-        target = (b.y_min + b.y_max) / 2.0 if lo > hi else min(max(north, lo), hi)
-        if abs(target - north) > 0.3:
-            print("  moving from north %+.2f to %+.2f, well inside %s's span "
-                  "(north %+.1f..%+.1f)" % (north, target, b.name, b.y_min, b.y_max))
-            n.send(east, target, 7.0)
-            for _ in range(40):
-                spin(n, 1.0)
-                if abs(n.pos[0] - target) < 0.6:
-                    break
-            spin(n, 3.0)
-            print("  now north %+.2f east %+.2f" % (n.pos[0], n.pos[1]))
+        print("  no wall in this world has a clear 8 m run-up line  ABORT")
+        placed = False
+        fails += 1
+    elif (abs(target - north) > 0.3
+          or abs(east - (b.x_min - 8.0)) > 0.8):
+        # Straight to the 8 m run-up point on that line, by a clear route.
+        print("  moving to the run-up point for %s: east %+.1f north %+.2f, "
+              "well inside its span (north %+.1f..%+.1f)"
+              % (b.name, b.x_min - 8.0, target, b.y_min, b.y_max))
+        placed = fly_route(n, boxes, (b.x_min - 8.0, target))
+        print("  now north %+.2f east %+.2f" % (n.pos[0], n.pos[1]))
+        if not placed:
+            print("  did not reach that line  ABORT (TEST 2 would measure the"
+                  " wrong thing)")
+            fails += 1
 
     print()
     print("  TEST 1: heading. Commanding 4 headings on the spot.")
@@ -325,8 +510,10 @@ def main():
     # flying east into nothing. The half-metre margin covers an aircraft
     # parked right at a wall's end, which the plan-mode half leaves it at.
     pre = world_geometry.faces_ahead(boxes, n.pos[1], n.pos[0], n.pos[2], 'east',
-                                     margin=0.5)
-    if not pre:
+                                     margin=0.5) if placed else []
+    if not placed:
+        print("    skipped: not on a measurable line (see above)")
+    elif not pre:
         print("    no wall east of north %+.2f at %.1f m in this world, not flying"
               "  FAIL" % (n.pos[0], n.pos[2]))
         print("    (move the aircraft onto a line with a wall ahead and rerun)")
@@ -334,6 +521,15 @@ def main():
     else:
         face, box = pre[0]
         print("    wall ahead: %s, face at east %+.1f" % (box.name, face))
+    span = (box.y_max - box.y_min) if pre else 0.0
+    if pre and span < 8.0:
+        # Narrower than 8 m and the 30 degree guidance steers round the end
+        # instead of braking, so the number would measure the wrong thing.
+        print("    %s spans only %.1f m north-south; need 8 m to measure a brake"
+              "  ABORT" % (box.name, span))
+        fails += 1
+        pre = []
+    if pre:
         # Always the same run-up: exactly 8 m from the face, facing it. From
         # closer, the aircraft cannot move toward the wall at all. From
         # further, the approach is long enough for CP_GUIDE_ANG to steer it
@@ -342,6 +538,24 @@ def main():
         # run-up point facing the way it is going, so the camera sees the
         # route, then turn to face the wall.
         rx = face - 8.0
+        # The transit to the run-up point is flown before anything is
+        # measured, so check it is open air first. Collision prevention would
+        # brake the transit too, and the test would then measure the brake
+        # from wherever that left it, not from 8 m. 1.5 m keeps the path
+        # outside the 2.0 m standoff band minus the airframe's own half-width.
+        e0, n0 = n.pos[1], n.pos[0]
+        steps = max(1, int(math.hypot(rx - e0, north - n0) / 0.5))
+        # The start point is skipped: the aircraft is already there.
+        tight = min(world_geometry.clearance(boxes, e0 + (rx - e0) * k / steps,
+                                             n0 + (north - n0) * k / steps)
+                    for k in range(1, steps + 1))
+        if tight < 1.5:
+            print("    the transit to the run-up point passes %.2f m from a box"
+                  "  ABORT" % tight)
+            print("    (start the test from a clearer spot, or move the run-up)")
+            fails += 1
+            pre = []
+    if pre:
         if abs(n.pos[1] - rx) > 1.0:
             print("    %.1f m from the face; moving to the 8 m run-up point"
                   % (face - n.pos[1]))
@@ -350,6 +564,16 @@ def main():
                 spin(n, 1.0)
                 if abs(n.pos[1] - rx) < 0.8 and abs(n.pos[0] - north) < 0.8:
                     break
+        if abs(n.pos[1] - rx) > 1.0 or abs(n.pos[0] - north) > 1.0:
+            # Measuring from wherever it stopped would report a standoff
+            # from an unknown run-up, which is the number this test exists
+            # to keep comparable.
+            print("    did not reach the run-up point (east %+.2f north %+.2f, "
+                  "wanted %+.2f %+.2f)  ABORT"
+                  % (n.pos[1], n.pos[0], rx, north))
+            fails += 1
+            pre = []
+    if pre:
         n.send(rx, north, 7.0, 90.0)
         for _ in range(20):
             spin(n, 1.0)
@@ -393,9 +617,13 @@ def main():
             print("    went through or round %s   FAIL" % box.name)
             fails += 1
         else:
-            ok = abs(gap_min - CP_DIST) < 0.7
-            print("    standoff %.2f m vs CP_DIST %.1f  %s"
-                  % (gap_min, CP_DIST, "ok" if ok else "FAIL"))
+            # Asymmetric on purpose. Closer than the setpoint is the unsafe
+            # direction and gets 0.25 m. Further is conservative, and the
+            # measured runs reach 2.60 m, so it keeps 0.7 m.
+            ok = CP_DIST - STANDOFF_UNDER <= gap_min <= CP_DIST + STANDOFF_OVER
+            print("    standoff %.2f m vs CP_DIST %.1f (allowed %.2f to %.2f)  %s"
+                  % (gap_min, CP_DIST, CP_DIST - STANDOFF_UNDER,
+                     CP_DIST + STANDOFF_OVER, "ok" if ok else "FAIL"))
             if not ok:
                 fails += 1
 
@@ -415,4 +643,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

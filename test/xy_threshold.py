@@ -17,7 +17,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import ensure_airborne, set_pilot_mode  # noqa: E402
+from regression import ensure_airborne, guarded, set_pilot_mode  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -152,8 +152,9 @@ def main():
     set_pilot_mode('brake')
     n.destroy_node()
     rclpy.try_shutdown()
-    return 0
+    # No fit is no measurement, and says so in the exit code.
+    return 0 if len(live) >= 2 else 1
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

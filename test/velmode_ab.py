@@ -15,6 +15,10 @@ import subprocess
 import time
 
 import rclpy
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from regression import guarded  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -29,8 +33,13 @@ WANT = 1.0      # m/s forward
 
 
 def param(name, value):
-    subprocess.run(["px4-param", "set", name, str(value)],
-                   capture_output=True, timeout=20)
+    """Set a PX4 parameter; raises if px4-param fails, so a trial never
+    runs on a value that was not actually set."""
+    r = subprocess.run(["px4-param", "set", name, str(value)],
+                       capture_output=True, text=True, timeout=20)
+    if r.returncode != 0:
+        raise RuntimeError('px4-param set %s %s failed: %s'
+                           % (name, value, (r.stderr or r.stdout).strip()))
 
 
 class AB(Node):
@@ -154,9 +163,16 @@ def main():
     print("  expected stick for %.2f m/s: %.3f  (0.114 + v/5.02)"
           % (WANT, 0.114 + WANT / 5.02))
     print()
-    on, st_on = trial(n, "CP on (CP_DIST 2.0)", 2.0)
-    off, st_off = trial(n, "CP off (CP_DIST -1)", -1.0)
-    param("CP_DIST", 2.0)
+    # Collision prevention is switched off for the second trial. The
+    # finally puts it back whatever happens, Ctrl-C included: a script that
+    # died between the two left every later test flying with no brake.
+    try:
+        on, st_on = trial(n, "CP on (CP_DIST 2.0)", 2.0)
+        off, st_off = trial(n, "CP off (CP_DIST -1)", -1.0)
+    finally:
+        n.send = False
+        param("CP_DIST", 2.0)
+        print("  CP_DIST restored to 2.0")
 
     print()
     print("  ===== READING =====")
@@ -178,4 +194,4 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(guarded(main))

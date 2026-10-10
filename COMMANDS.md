@@ -42,7 +42,7 @@ PX4_GZ_WORLD=walls HEADLESS=1 make px4_sitl gz_x500_depth
 | `PX4_GZ_WORLD=pillars` | The second world, from this repository's `worlds/`, linked into PX4's tree by `scripts/link_assets.sh` |
 | `HEADLESS=1` | Suppresses the Gazebo GUI, which buys back 10 to 45% of real-time factor. The server still renders the depth camera |
 | `gz_x500_depth` | The airframe. Plain `gz_x500` has no camera and will not work |
-| `PX4_GZ_SIM_RENDER_ENGINE=ogre` | Add this on a Raspberry Pi, whose driver caps desktop OpenGL at 3.1 while Gazebo's default renderer needs 3.3, and in a VMware VM, where the default renderer produces no depth |
+| `PX4_GZ_SIM_RENDER_ENGINE=ogre` | Add this on a Raspberry Pi, whose driver is reported to cap desktop OpenGL at 3.1 (untested here) while Gazebo's default renderer needs 3.3, and in a VMware VM, where the default renderer produces no depth |
 
 This leaves you at a `pxh>` prompt. That prompt is PX4's own shell, not bash.
 
@@ -96,6 +96,10 @@ answers, and logs each one as `[px4_params]`. Nothing to type.
 | `NAV_RCL_ACT=0` | The RC-loss failsafe. The pilot's synthetic sticks are the RC link, and if they ever pause this stops PX4 flying off to return-to-launch |
 | `CP_DIST=2.0` | The collision-prevention standoff in metres. Avoidance is off until it is set; `-1` disables it |
 | `CP_GO_NO_DATA=1` | The camera sees 73 degrees, so 57 of the 72 obstacle bins are genuinely unknown. At the default of 0 PX4 refuses to accelerate in any direction it cannot see, and sideways or backwards goals are silently ignored |
+
+> These values are for the simulator only. Three of them switch off a
+> protection a real aircraft needs; [docs/hardware.md](docs/hardware.md) lists what changes before
+> any real flight.
 
 They persist in the PX4 build tree after the first run, in
 `rootfs/parameters.bson`, and survive a restart of PX4 (checked 2026-10-10). To
@@ -155,8 +159,10 @@ Avoidance belongs to exactly one layer at a time. From the orange ball's menu,
 or on the command line:
 
 ```bash
-ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: brake}" \n    --qos-reliability reliable --qos-durability transient_local
-ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}" \n    --qos-reliability reliable --qos-durability transient_local
+ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: brake}" \
+    --qos-reliability reliable --qos-durability transient_local
+ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: plan}" \
+    --qos-reliability reliable --qos-durability transient_local
 ```
 
 The two flags are not optional. The pilot subscribes with reliable,
@@ -210,7 +216,7 @@ to brake by itself if you give it a green-ball goal while in plan mode.
 ```bash
 ros2 node list                                   # 8 for the base stack, 9 with RViz, 21 with Nav2
 ros2 topic hz /fmu/out/vehicle_local_position_v1 # about 50 Hz. If silent, the agent is down
-ros2 topic hz /depth_camera/points               # the depth cloud, about 12 Hz
+ros2 topic hz /depth_camera/points               # the depth cloud, 6 to 12 Hz
 ros2 topic hz /scan                              # the 2D scan Nav2 consumes
 ros2 topic echo /fmu/out/vehicle_status_v1 --once | grep nav_state
 gz topic -e -t /world/walls/stats                # real_time_factor. Want 0.9 or better
@@ -230,8 +236,8 @@ is empty, perception is not reaching PX4 and nothing downstream can work.
 
 ## Measuring it
 
-Each script needs the stack running and flies the aircraft. They are
-measurements, not unit tests.
+Every script below except the first two needs the stack running and flies
+the aircraft. They are measurements, not unit tests.
 
 ```bash
 python3 test/histogram_selftest.py   # the obstacle node alone, no simulator, two seconds
@@ -312,7 +318,7 @@ Other specific failures:
 | Aircraft only flies forwards | `CP_GO_NO_DATA` is 0 |
 | Real-time factor near 0.03 | Software rendering. Check `glxinfo -B` for `llvmpipe` |
 | Real-time factor around 0.5 | The Gazebo GUI is open. Use `HEADLESS=1` |
-| Aircraft will not arm | A goal is holding the throttle up (`STOP` first), or PX4 is still booting |
+| Aircraft will not arm | A goal is holding the throttle up: `STOP` on the green ball first. Or PX4 is still booting |
 
 ## Building
 

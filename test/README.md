@@ -17,7 +17,7 @@ it was not meant to. Each half also runs on its own.
 
 | Script | What it measures | Mode |
 |---|---|---|
-| `regression.py` | Puts the pilot in brake mode, commands four cardinal headings and reports the settled error, then backs off 8 m from a wall read from the world file, flies at it and reports the closest approach against `CP_DIST`, stopping once the aircraft stands still. Exit code counts failures | brake |
+| `regression.py` | Puts the pilot in brake mode, commands four cardinal headings and reports the settled error, then picks a wall from the world file with a clear line 4 m inside its ends, flies a route round any other box to the 8 m run-up point, flies at the wall and reports the closest approach against `CP_DIST` (pass from 0.25 m inside it to 0.7 m outside), stopping once the aircraft stands still. It aborts rather than measure from the wrong place. Exit code counts failures | brake |
 | `nav2_flight.py` | Switches to plan mode, confirms PX4 is in Offboard, sends a Nav2 goal behind the 10 m wall and reports whether the aircraft got past it and how far sideways it went, then switches back | plan |
 
 ## The individual measurements
@@ -37,23 +37,28 @@ it was not meant to. Each half also runs on its own.
 
 ## Last run, 2026-10-10
 
-Every script was run on the development machine, on fresh stacks, three times
-in sequence while the scripts were being repaired. What each one did:
+Every script in sequence on one freshly started stack, then the order that
+used to fail (`nav2_flight.py` straight into `regression.py`), then the gate,
+about forty minutes of flying in all:
 
 | Script | Result |
 |---|---|
-| `histogram_selftest.py` | Pass, every run |
-| `regression.py`, `nav2_flight.py`, `gate.py` | Pass on a fresh stack in every run; standoff 2.00 to 2.02 m. Late in a long back-to-back session they failed twice, once after a crash caused by an older test and once with no cause found yet |
-| `yaw_test.py`, `mode_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py` | Pass. `yaw_test.py` lost its first command until the connection guard was added |
-| `hold_test.py` | Runs; coast past the cut point measured at 2.5, 3.5 and 27 degrees in three runs, so treat one run as indicative only |
-| `yaw_threshold.py`, `xy_threshold.py` | Run since the pilot gained its external mode. The yaw sweep repeated (turns from 0.15, rates matching the table in how-it-works.md). The XY slope did not: 5.0 and 2.4 m/s per unit in two runs. Not yet trusted |
-| `ned_check.py` | Passed twice, failed once late in a long session with a heading swing during a leg. Run it on a fresh stack |
+| `histogram_selftest.py` | Pass |
+| `regression.py`, `nav2_flight.py`, `gate.py` | Pass. Standoffs 2.00 and 2.02 m; Nav2 ended 0.4 to 0.8 m from its goal. The regression run straight after `nav2_flight.py` routed round box2 to its line and passed |
+| `yaw_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py`, `ned_check.py` | Pass. `ned_check.py` moved 10.6 m right and 10.5 m left for 11 s at 1 m/s commanded |
+| `hold_test.py` | Holds: no drift in 30 s, 6.7 degrees of coast past the cut point. Earlier runs measured 2.5, 3.5 and 27 degrees, from before the test took over the stick stream |
+| `mode_test.py` | Fails one step: commanded 1 m/s right straight after the forward step, it averaged 0.34 m/s against a 0.4 threshold. The sign is right, and `ned_check.py` measures the same axis at 1 m/s, so this looks like the step's short settling time. Its exit code used to be 0 whatever happened, so earlier passes do not count. Open |
+| `yaw_threshold.py` | Turns from stick 0.15, as before |
+| `xy_threshold.py` | Moves from stick 0.15, but the fitted slope differs every run: 5.0, 2.4 and 1.2 m/s per unit. Not trusted |
 
-The rule that follows: run a measurement on a freshly started stack, and
-restart PX4, Gazebo and the launch between long sessions. Twenty-plus minutes
-of back-to-back flying produced failures that moved between scripts from run
-to run, with no failsafe, estimator reset or stick loss in PX4's log to
-explain them. That is open.
+The late-session failures recorded before this run are explained. The plan
+half leaves the aircraft at north 10, beyond box2. The brake half then tried
+to move straight south to its line, box2 stopped the move at north 7.8, and
+the test flew its brake from there, 2.1 m inside box1's end, where collision
+prevention steered it round the end of the wall to east 100. It appeared late
+in a session because only the gate, or a run after `nav2_flight.py`, starts
+there. `regression.py` now routes round obstacles and refuses to measure from
+a line it did not reach.
 
 Run them with the stack up and the workspace sourced, for example:
 
@@ -74,6 +79,12 @@ Two things to know before trusting a result:
   prevention deflects its legs. The standoff is measured by the
   gate's brake half; the older `avoid_test.py` was retired on 2026-10-10 after
   its straight-line reposition with avoidance off flew through a wall.
+* **Each script leaves a known state.** Every flying script runs inside
+  `guarded()` from `regression.py`: before it starts and after it ends,
+  whatever the exit (an abort, an exception, Ctrl-C), any Nav2 goal is
+  cancelled, the pilot goes back to brake mode and a STOP goal is sent.
+  `velmode_ab.py` also restores `CP_DIST` in its own `finally`, because it
+  switches collision prevention off for its second trial.
 * **Nothing else should be driving the aircraft.** If someone is clicking in
   RViz while a script runs, the two fight over the same goal topic and the
   numbers are meaningless.

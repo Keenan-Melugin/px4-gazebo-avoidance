@@ -26,6 +26,7 @@ the result before anything flies. It is not a flight-ready system.
 | Change it, and prove the change did what you meant | [docs/change-it.md](docs/change-it.md) |
 | Add to it: a world, a sensor, an airframe, a second machine | [docs/extend.md](docs/extend.md) |
 | Get data out, put inputs in, change the conditions of a run | [docs/data.md](docs/data.md) |
+| Take it toward a real aircraft: what to change before anything flies | [docs/hardware.md](docs/hardware.md) |
 | Look a command up | [COMMANDS.md](COMMANDS.md) |
 
 ## Status
@@ -47,8 +48,12 @@ threads and an AMD RX 7800 XT unless the row says otherwise.
 What it is not: avoidance here is a hover capability. PX4's collision
 prevention is horizontal only, runs in Position mode only, and stops during
 VTOL transition. The camera sees a 73 degree arc ahead, so the aircraft has
-to point roughly where it is going. Nothing here has run on
-real hardware. Nav2 plans on the camera only; the lidar feeds collision
+to point roughly where it is going. Plan mode has no PX4 collision
+prevention at all: in Offboard the planner's costmap is the only thing that
+sees obstacles, and the pilot holds position if the obstacle data stops.
+Nothing here has run on real hardware, and the parameters it sets are for
+the simulator only: [docs/hardware.md](docs/hardware.md) lists what changes
+before anything flies. Nav2 plans on the camera only; the lidar feeds collision
 prevention but not the planner yet. The airframe is PX4's `x500_depth`; plain `x500` has no camera,
 and `models/x500_depth_lidar` here adds a 360 degree 2D lidar to it.
 
