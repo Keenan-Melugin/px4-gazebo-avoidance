@@ -1,4 +1,4 @@
-"""Turns RViz's flat Goal Pose tool into a PX4 reposition command.
+"""Turns RViz's flat Goal Pose tool into a PX4 reposition (brake mode) or a Nav2 goal (plan mode).
 
 Split out of a single-file prototype. The behaviour here is measured, not
 assumed; see the repository README for the numbers and the traps.
@@ -19,7 +19,8 @@ from .frames import MODE_QOS, PX4_QOS
 
 
 class GoalBridge(Node):
-    """RViz's flat "2D Goal Pose" tool -> a PX4 reposition command.
+    """RViz's flat "2D Goal Pose" tool -> a PX4 reposition in brake mode,
+    or a forward to Nav2 on /avoidance_sim/nav2_goal_pose in plan mode.
 
     Two details carried over from the prototype, both sourced rather than
     guessed:

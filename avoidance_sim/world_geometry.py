@@ -31,7 +31,8 @@ from collections import namedtuple
 PX4_ROOT = os.path.expanduser('~/PX4-Autopilot')
 PX4_WORLDS = os.path.join(PX4_ROOT, 'Tools', 'simulation', 'gz', 'worlds')
 # The repository's own worlds, next to this package in a source checkout and
-# in share/avoidance_sim/worlds once installed. install.sh links them into
+# in share/avoidance_sim/worlds once installed. scripts/link_assets.sh, which
+# scripts/install.sh runs, links them into
 # PX4's worlds directory too, because PX4 builds the world path itself from
 # PX4_GZ_WORLDS, which its generated gz_env.sh overwrites (see docs/extend.md, "Where PX4 looks").
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -6,7 +6,7 @@
 # 1. There is no map and no localisation. PX4's EKF already gives metric
 #    odometry, so the global frame is `odom`, not `map`, and there is no
 #    AMCL, no map_server and no static layer. Nav2 works this way but every
-#    tutorial assumes otherwise, so every frame below says odom deliberately.
+#    tutorial assumes otherwise, so every frame below says odom on purpose.
 #
 # 2. Nav2 is 2D. The aircraft flies at an altitude the planner knows nothing
 #    about: it plans in the horizontal plane and altitude stays with the
@@ -64,10 +64,11 @@ local_costmap:
         cost_scaling_factor: 3.0
         # Must exceed robot_radius (0.3) or the planner will graze walls, but
         # keep it tight: at 1.2 m the aircraft ends up sitting inside inflated
-        # space when it rounds the end of a wall, every MPPI sample then
-        # scores as a collision, and the controller aborts with "Optimizer
-        # fail to compute path". PX4's own braking is the backstop for the
-        # margin this gives up.
+        # space when it rounds the end of a wall. Measured with MPPI, the
+        # first controller: every sample then scored as a collision and it
+        # aborted with "Optimizer fail to compute path". Pure pursuit's own
+        # collision check refuses to drive from inside inflated space the
+        # same way. PX4's braking is the backstop for the margin this gives up.
         inflation_radius: 0.75
       always_send_full_costmap: True
 
@@ -217,7 +218,7 @@ bt_navigator:
     bt_loop_duration: 10
     default_server_timeout: 20
     # Nav2's DEFAULT tree calls the Spin and BackUp recovery behaviours, and
-    # the behaviour_server above deliberately does not load them: a flying
+    # the behaviour_server above does not load them, on purpose: a flying
     # aircraft spinning or reversing blindly is worse than stopping. With the
     # default tree the load then fails outright and the lifecycle manager
     # stops there, taking bt_navigator and velocity_smoother with it.

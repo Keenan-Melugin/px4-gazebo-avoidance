@@ -1,6 +1,6 @@
 """Bring up everything except PX4 itself.
 
-PX4 is deliberately left out. Starting it means running a make target from the
+PX4 is left out on purpose. Starting it means running a make target from the
 PX4 source tree, which is a build step as much as a run step, and burying a
 build inside a launch file makes failures hard to read. So this is two
 commands rather than one:
@@ -159,7 +159,7 @@ def generate_launch_description():
         # bridge_extra:= (see sensor_nodes above).
         OpaqueFunction(function=sensor_nodes, args=[share, sim_time]),
 
-        # No name= here, deliberately. This executable hosts six nodes in one
+        # No name= here, on purpose. This executable hosts six nodes in one
         # process, and name= becomes a __node remap that renames all of them
         # to the same thing, so they vanish from `ros2 node list` under their
         # real names and collide with each other. Each node names itself.

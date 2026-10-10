@@ -43,7 +43,7 @@ class SoftwarePilot(Node):
     controller that continuously re-aims gets genuine go-around rather than
     just braking.
 
-    Honest scope: CP is horizontal only. modifySetpoint takes a Vector2f and
+    Scope: CP is horizontal only. modifySetpoint takes a Vector2f and
     the library contains no Vector3f at all, so the climb and descent of a 3D
     goal are NOT protected. This is 3D waypoints with 2D avoidance.
     """
@@ -70,11 +70,8 @@ class SoftwarePilot(Node):
     # the aircraft stalls short. It froze 14.3 degrees off every time, because
     # 14.3 deg of error times the old gain landed exactly on 0.10.
     # So the command steps over the dead band instead of fading into it.
-    # Stick-to-rate model, measured by sweeping the stick:
-    #     stick  0.05  0.08  0.10 | 0.12  0.15  0.20  0.30  0.50
-    #     deg/s  0.0   0.0   0.0  | 1.1   2.9   5.7   12.4  28.8
-    # Dead band to about 0.10, then rate = (stick - 0.10) * 72 deg/s, which
-    # predicts 28.8 at stick 0.50 against 28.8 measured. Inverting that model
+    # The model above predicts 28.8 deg/s at stick 0.50 against 28.8
+    # measured. Inverting that model
     # is what lets the command be expressed as a rate.
     # 0.105 is interpolated, not measured: the sweep jumps from 0.10 (no
     # rotation) to 0.12 (1.1 deg/s), so the edge is only known to lie in
@@ -110,7 +107,8 @@ class SoftwarePilot(Node):
     ALIGN_MIN_SPEED = 0.25              # m/s. Below this, do not chase noise.
     KP_ALIGN = 1.0                      # rad/s per rad of misalignment
 
-    # Two ways to fly, chosen at runtime on /avoidance_sim/mode.
+    # Two ways to fly, chosen at runtime on /avoidance_sim/mode, plus
+    # 'external' (below), which only hands the stick stream to a test script.
     #
     #   brake  Position mode, synthetic sticks. PX4 collision prevention is
     #          live and is the entire avoidance mechanism.
@@ -316,7 +314,8 @@ class SoftwarePilot(Node):
         TrajectorySetpoint.velocity is the NED world frame; cmd_vel is
         base_link FLU. Rotating one into the other is the kind of conversion
         that produces believable numbers when it is wrong, so it is measured
-        rather than trusted: see test/offboard_frame_check.py.
+        rather than trusted: see test/ned_check.py, which commands each
+        direction and reads back the velocity PX4 reports.
         """
         # The stream has to exist before PX4 will accept the mode, and has to
         # keep existing or PX4 drops out of it.

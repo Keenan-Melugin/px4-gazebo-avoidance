@@ -21,7 +21,7 @@ PX4_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                      durability=DurabilityPolicy.VOLATILE,
                      history=HistoryPolicy.KEEP_LAST, depth=5)
 
-# The brake/plan mode is state, not an event. TRANSIENT_LOCAL means the last
+# The pilot's mode (brake, plan, or external for test scripts) is state, not an event. TRANSIENT_LOCAL means the last
 # value is retained and handed to any subscriber that joins late, so a mode
 # switch cannot be lost to discovery timing the way a one-shot VOLATILE
 # message can. Publishers and subscribers must BOTH use this: a VOLATILE

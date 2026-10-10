@@ -26,7 +26,7 @@ class CommandMarker(Node):
     An InteractiveMarker menu can, costs no compile step, and carries correctly
     labelled entries, which a repurposed third-party panel would not.
 
-    Takeoff is deliberately a TWO command sequence, mode then arm, gated on the
+    Takeoff is a TWO command sequence on purpose, mode then arm, gated on the
     ack. That is what PX4's own `commander takeoff` does
     (Commander.cpp:338-342) and the intuitive arm-then-takeoff order does not
     work: NAV_TAKEOFF only changes the mode intention and ignores its lat/lon/

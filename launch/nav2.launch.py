@@ -24,7 +24,7 @@ aircraft in Position mode, which looked like a way to have Nav2 plan around
 obstacles while PX4 still braked if the plan drove at one.
 
 It does not work, and the reason is structural rather than a tuning problem.
-A planner approaches an obstacle deliberately in order to go around it, and
+A planner approaches an obstacle on purpose in order to go around it, and
 collision prevention exists to veto motion toward obstacles, so the lower
 layer vetoes the upper layer plan. Measured with one A/B, same goal and same
 everything else:
@@ -37,8 +37,9 @@ So PX4 collision prevention and a planner cannot share an axis. Collision
 prevention is a manual-flight assist; it does not compose with an autonomous
 planner. It stays for the base stack, where it is the whole mechanism.
 
-The resolution is not a parameter. The pilot has two modes, selected on
-/avoidance_sim/mode or from the RViz right-click menu:
+The resolution is not a parameter. The pilot has two flying modes, selected
+on /avoidance_sim/mode or from the RViz right-click menu (a third, external,
+only hands the stick stream to a test script):
 
     brake   Position mode on synthetic sticks. Collision prevention live.
     plan    Offboard, TrajectorySetpoint velocity from Nav2. PX4 holds
@@ -46,8 +47,9 @@ The resolution is not a parameter. The pilot has two modes, selected on
             tasks, so Offboard structurally has none.
 
 CP_DIST therefore never needs changing: it simply does not apply in plan
-mode. Verified by leaving it at 2.0, the value that deadlocked the stick
-path, and watching plan mode track 1.00 m/s commanded to 1.00 m/s achieved.
+mode. Verified by leaving it at 2.0, a larger standoff than the 1.0 that
+deadlocked the stick path, and watching plan mode track 1.00 m/s commanded to
+1.00 m/s achieved.
 
 Three more things were measured on the way to a goal actually being reached,
 and each is a comment in config/nav2.yaml or config/avoidance_bt.xml:

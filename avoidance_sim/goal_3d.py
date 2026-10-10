@@ -176,7 +176,7 @@ class Goal3D(Node):
             return
         msg = PoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        # The ring is part of this marker, so its heading is deliberate.
+        # The ring is part of this marker, so its heading is intended.
         msg.header.frame_id = 'odom' + YAW_SUFFIX
         msg.pose = self.pose
         self.pilot_goal.publish(msg)

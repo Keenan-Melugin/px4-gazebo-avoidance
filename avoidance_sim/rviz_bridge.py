@@ -7,7 +7,8 @@ thing for a reader to watch rather than six.
 
     TfPublisher     PX4 odometry -> the TF tree RViz needs
     WorldMarkers    the Gazebo world's obstacles, drawn in RViz
-    GoalBridge      RViz's flat "2D Goal Pose" tool -> a PX4 reposition
+    GoalBridge      RViz's flat "2D Goal Pose" tool -> a PX4 reposition (brake)
+                    or a Nav2 goal (plan)
     CommandMarker   the right-click menu above the aircraft
     Goal3D          the draggable 3D waypoint, with a ring for heading
     SoftwarePilot   flies to a goal on synthetic sticks

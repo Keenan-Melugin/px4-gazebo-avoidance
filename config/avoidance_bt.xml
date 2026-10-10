@@ -2,7 +2,7 @@
   Behaviour tree for an aircraft with a narrow forward camera.
 
   Based on Nav2's navigate_to_pose_w_replanning_and_recovery.xml, with three
-  deliberate differences, each the result of a measured failure:
+  differences, each the result of a measured failure:
 
   1. A controller failure is RECOVERED, not fatal. The stock replanning-only
      tree fails the whole goal the instant the controller objects. Measured:
