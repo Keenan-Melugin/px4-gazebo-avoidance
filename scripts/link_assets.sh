@@ -32,6 +32,9 @@ for f in "$HERE"/worlds/*.sdf; do
 done
 for d in "$HERE"/models/*/; do
   [ -d "$d" ] || continue
+  # Only real models. models/airframe_template/ holds a PX4 airframe file,
+  # not a Gazebo model, and was being linked into PX4's models folder too.
+  [ -f "$d/model.sdf" ] || continue
   name=$(basename "$d")
   ln -sfn "${d%/}" "$GZ/models/$name"
   printf '  model  %-20s -> %s\n' "$name" "$GZ/models/"

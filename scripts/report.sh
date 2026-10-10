@@ -39,7 +39,7 @@ line "camera patch" "$( [ -d "$HOME/PX4-Autopilot/Tools/simulation/gz" ] && (git
 line "agent" "$(command -v MicroXRCEAgent || echo "not on PATH")"
 WS=${WS:-$HOME/av_ws}
 line "workspace" "$( [ -f "$WS/install/setup.bash" ] && echo "$WS" || echo "not built at $WS")"
-line "px4_msgs" "$( [ -d "$WS/src/px4_msgs" ] && git -C "$WS/src/px4_msgs" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "not found")"
+line "px4_msgs" "$( [ -d "$WS/src/px4_msgs" ] && git -C "$WS/src/px4_msgs" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "not in $WS/src (install.sh puts it there)")"
 line "this repo" "$(git -C "$(dirname "$0")/.." log -1 --format='%h %s' 2>/dev/null | cut -c1-70)"
 
 echo "== running stack =="
@@ -48,12 +48,17 @@ line "gazebo processes" "$(pgrep -cf 'gz sim' 2>/dev/null)"
 line "agent processes" "$(pgrep -c MicroXRCEAgent 2>/dev/null)"
 if [ -r /opt/ros/jazzy/setup.bash ] && [ -f "$WS/install/setup.bash" ]; then
   set +u; . /opt/ros/jazzy/setup.bash; . "$WS/install/setup.bash"; set -u
-  line "fmu topics" "$(timeout 15 ros2 topic list 2>/dev/null | grep -c '^/fmu/out/' || echo 0)"
+  # grep -c prints 0 itself when nothing matches; || true, not || echo 0,
+  # or the report printed a second 0 on a line of its own.
+  line "fmu topics" "$(timeout 15 ros2 topic list 2>/dev/null | grep -c '^/fmu/out/' || true)"
   # --no-daemon: a stale daemon answers 0 for a stack that is plainly running
   line "nodes" "$(timeout 20 ros2 node list --no-daemon 2>/dev/null | wc -l)"
 fi
 if command -v gz >/dev/null && [ "$(pgrep -cf 'gz sim')" != "0" ]; then
-  line "real-time factor" "$(timeout 10 gz topic -e -t /world/walls/stats -n 3 2>/dev/null | grep -oE 'real_time_factor: [0-9.]+' | tail -1 | cut -d' ' -f2)"
+  # The running world's name, not walls: the stats topic is per world.
+  W=$(timeout 10 gz topic -l 2>/dev/null | grep -m1 -E '^/world/[^/]+/stats$' | cut -d/ -f3)
+  line "world" "${W:-unknown}"
+  line "real-time factor" "$(timeout 10 gz topic -e -t /world/${W:-walls}/stats -n 3 2>/dev/null | grep -oE 'real_time_factor: [0-9.]+' | tail -1 | cut -d' ' -f2)"
 fi
 BIN="$HOME/PX4-Autopilot/build/px4_sitl_default/bin"
 if [ -x "$BIN/px4-listener" ] && [ "$(pgrep -cf 'bin/px4')" != "0" ]; then
