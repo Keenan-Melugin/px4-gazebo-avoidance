@@ -69,9 +69,9 @@ takes `--start E N`, `--goal E N` and `--alt`.
 Two things to know before trusting a result:
 
 * **Each script takes off itself if it has to.** The ones that measure in
-  flight call `ensure_airborne()` from `regression.py`, and `twist_check.py`
-  also flies to open air from the world file first, because near a wall
-  collision prevention deflects its legs. The standoff is measured by the
+  flight call `ensure_airborne()` from `regression.py`. `twist_check.py` also
+  flies to open air from the world file first, because near a wall collision
+  prevention deflects its legs. The standoff is measured by the
   gate's brake half; the older `avoid_test.py` was retired on 2026-10-10 after
   its straight-line reposition with avoidance off flew through a wall.
 * **Nothing else should be driving the aircraft.** If someone is clicking in
