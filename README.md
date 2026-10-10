@@ -9,14 +9,18 @@ waypoints on synthetic manual control, which keeps PX4 in the one flight
 mode where its collision prevention applies. Fly it at a wall and it brakes;
 switch avoidance off and it hits the wall.
 
+It is a learning and test bench for the eVTOL project's autonomy work: a
+place to learn the stack, try a world, a sensor or an airframe, and measure
+the result before anything flies. It is not a flight-ready system.
+
 ![RViz: the aircraft facing a wall, the depth cloud painting it, the green goal ball and the orange command ball](docs/img/rviz-overview.png)
 
 ## Start here
 
 | You want to | Read |
 |---|---|
+| Learn what each piece is: ROS 2, Gazebo, PX4, the bridge, RViz, Nav2, and where their data goes. Read this first if those names are new | [docs/pieces.md](docs/pieces.md) |
 | Install it, from an empty Ubuntu 24.04 to a flying aircraft | [docs/install.md](docs/install.md) |
-| Learn what each piece is: ROS 2, Gazebo, PX4, the bridge, RViz, Nav2, and where their data goes | [docs/pieces.md](docs/pieces.md) |
 | Fly it from RViz, in brake mode and in plan mode | [docs/fly.md](docs/fly.md) |
 | Understand how the pieces talk, and where they bite | [docs/how-it-works.md](docs/how-it-works.md) |
 | Change it, and prove the change did what you meant | [docs/change-it.md](docs/change-it.md) |
