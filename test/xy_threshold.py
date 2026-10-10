@@ -79,7 +79,9 @@ def main():
     rclpy.init()
     # Take off first if needed: this used to assume the aircraft was
     # already flying, and on a fresh stack measured nothing (2026-10-10).
-    if ensure_airborne() is None:
+    # The sweep flies forward, north, about 30 m in all. A wall ahead would
+    # let collision prevention brake it and the slope would read low.
+    if ensure_airborne(legs=[(0.0, 45.0)]) is None:
         print("  could not arm and take off"); return 1
     n = P()
     # The sweep owns the sticks: the pilot stops streaming its own, or

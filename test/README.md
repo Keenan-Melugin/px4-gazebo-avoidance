@@ -30,7 +30,7 @@ it was not meant to. Each half also runs on its own.
 | `hold_test.py` | Separates "does it turn" from "does it stay turned": holds zero stick and watches for drift |
 | `velmode_ab.py` | Commanded against achieved speed in velocity mode, with collision prevention on and off. This is the A/B that showed collision prevention and a planner cannot share an axis |
 | `mode_test.py` | The brake/plan toggle in both directions, and that plan mode is not subject to collision prevention |
-| `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding a direction and reading back the velocity PX4 reports. The lateral axis is still unverified, because pure pursuit never commands it |
+| `ned_check.py` | The body-frame (FLU) to NED velocity conversion in plan mode, by commanding forward, right and left in turn and reading back how far the aircraft moved in the world |
 | `twist_check.py` | That `/odom` carries its twist in base_link FLU, as nav_msgs requires, rather than in the world frame |
 | `template_measure.py` | Not a measurement: the skeleton to copy for a new one, with the five-step shape new scripts should follow. Its placeholder measures drift when the aircraft is left alone |
 | `histogram_selftest.py` | The obstacle node against made-up clouds and scans, bin by bin: the single camera as measured, two sensors merged, stale and dead sensors, a yawed sensor. The only script here that needs no simulator; two seconds |
@@ -45,11 +45,11 @@ about forty minutes of flying in all:
 |---|---|
 | `histogram_selftest.py` | Pass |
 | `regression.py`, `nav2_flight.py`, `gate.py` | Pass. Standoffs 2.00 and 2.02 m; Nav2 ended 0.4 to 0.8 m from its goal. The regression run straight after `nav2_flight.py` routed round box2 to its line and passed |
-| `yaw_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py`, `ned_check.py` | Pass. `ned_check.py` moved 10.6 m right and 10.5 m left for 11 s at 1 m/s commanded |
+| `yaw_test.py`, `twist_check.py`, `template_measure.py`, `velmode_ab.py`, `ned_check.py` | Pass. In open air `ned_check.py` moved 10.5 m on each leg in 11 s at 1 m/s with the heading steady; `velmode_ab.py` achieved 0.92 m/s with collision prevention on and off |
 | `hold_test.py` | Holds: no drift in 30 s, 6.7 degrees of coast past the cut point. Earlier runs measured 2.5, 3.5 and 27 degrees, from before the test took over the stick stream |
-| `mode_test.py` | Fails one step: commanded 1 m/s right straight after the forward step, it averaged 0.34 m/s against a 0.4 threshold. The sign is right, and `ned_check.py` measures the same axis at 1 m/s, so this looks like the step's short settling time. Its exit code used to be 0 whatever happened, so earlier passes do not count. Open |
+| `mode_test.py` | Pass: 1.02 m/s forward and 1.02 m/s right for 1.00 commanded. Its first run of the day read 0.34 m/s right: a trace showed the leg hitting box1 at 1 m/s in plan mode and the aircraft falling to the ground, from a start the script called "well clear of the walls". It had always exited 0, so nobody saw. It now starts in open air found from the world file |
 | `yaw_threshold.py` | Turns from stick 0.15, as before |
-| `xy_threshold.py` | Moves from stick 0.15, but the fitted slope differs every run: 5.0, 2.4 and 1.2 m/s per unit. Not trusted |
+| `xy_threshold.py` | Repeats in open air: dead band 0.115 and 0.114, slope 5.05 and 5.03 m/s per unit in two runs from different starts, matching the pilot's 0.114 and 5.02. The earlier spread (5.0, 2.4, 1.2) was walls: the sweep flew forward from wherever it was, and collision prevention braked it |
 
 The late-session failures recorded before this run are explained. The plan
 half leaves the aircraft at north 10, beyond box2. The brake half then tried
@@ -79,6 +79,11 @@ Two things to know before trusting a result:
   prevention deflects its legs. The standoff is measured by the
   gate's brake half; the older `avoid_test.py` was retired on 2026-10-10 after
   its straight-line reposition with avoidance off flew through a wall.
+* **Each script that flies fixed legs finds open air first.** `ensure_airborne(legs=...)`
+  takes the legs the script will fly facing north, finds the nearest start in
+  the world file where they stay 5 m from every box, flies there by a clear
+  route, and faces north. `mode_test.py`, `ned_check.py`, `velmode_ab.py` and
+  `xy_threshold.py` use it; a new script that flies set distances should too.
 * **Each script leaves a known state.** Every flying script runs inside
   `guarded()` from `regression.py`: before it starts and after it ends,
   whatever the exit (an abort, an exception, Ctrl-C), any Nav2 goal is

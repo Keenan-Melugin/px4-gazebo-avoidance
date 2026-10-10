@@ -18,7 +18,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import guarded  # noqa: E402
+from regression import ensure_airborne, guarded  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -138,6 +138,11 @@ def trial(n, label, cp):
 
 def main():
     rclpy.init()
+    # Two 10 s legs north at 1 m/s plus coasting, the second with collision
+    # prevention OFF. It used to fly them from wherever the last script
+    # stopped, pointing north and hoping; now it starts in open air.
+    if ensure_airborne(legs=[(0.0, 30.0)]) is None:
+        print("  could not take off into open air"); return 1
     n = AB()
     # Up to 20 s for the first data. A fixed 4 s was enough on the
     # development machine and not on a 4-core one, where DDS discovery had
@@ -150,13 +155,13 @@ def main():
         print("  no position"); return 1
     print("  aircraft at alt %.2f, heading %+.0f" % (n.alt, math.degrees(n.yaw)))
     if n.alt < 4.0:
-        print("  needs to be airborne above 4 m; run after a flight test")
-        return 1
+        print("  ABORT: not airborne")
+        return 2
 
-    # Point north, away from the near wall, so the forward direction is open.
-    print("  pointing north and settling")
+    # ensure_airborne left it facing north in open air; settle there.
+    print("  settling, facing north")
     n.goal(n.pos[1], n.pos[0], n.alt, 0.0)
-    spin(n, 22.0)
+    spin(n, 8.0)
     print("  heading now %+.0f" % math.degrees(n.yaw))
 
     print()

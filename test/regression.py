@@ -18,6 +18,7 @@ code is the number of failures.
 """
 import argparse
 import math
+import sys
 import time
 
 import rclpy
@@ -177,6 +178,44 @@ def pick_line(boxes, east, north, alt=7.0):
     return None, None
 
 
+def world_boxes(default='walls'):
+    """The boxes of the world named by --world on the command line, or walls.
+
+    For scripts that take no other arguments, so they need no argparse.
+    """
+    w = default
+    if '--world' in sys.argv[:-1]:
+        w = sys.argv[sys.argv.index('--world') + 1]
+    return world_geometry.load_boxes(world_geometry.resolve_world(w))
+
+
+def open_air(boxes, legs, near, margin=5.0, extent=60.0, step=2.0):
+    """The start point nearest `near` from which `legs` stay clear of boxes.
+
+    legs are (east, north) offsets flown one after another, facing north.
+    margin is the distance kept from every box along the whole path: 5 m is
+    the 2.0 m standoff, braking from about 1.5 m/s, and room to spare.
+    Measured 2026-10-10: the mode test's sideways leg, flown from wherever it
+    happened to be, hit box1 at 1 m/s in plan mode, where nothing brakes,
+    and the aircraft fell to the ground. In Position mode the same mistake is
+    quieter: collision prevention brakes the leg and the measurement reads
+    low. Returns (east, north), or None.
+    """
+    k = int(extent / step)
+    cands = sorted(((near[0] + i * step, near[1] + j * step)
+                    for i in range(-k, k + 1) for j in range(-k, k + 1)),
+                   key=lambda p: math.hypot(p[0] - near[0], p[1] - near[1]))
+    for p in cands:
+        if world_geometry.clearance(boxes, p[0], p[1]) < margin:
+            continue
+        pts = [p]
+        for de, dn in legs:
+            pts.append((pts[-1][0] + de, pts[-1][1] + dn))
+        if all(leg_clearance(boxes, a, b) >= margin for a, b in zip(pts, pts[1:])):
+            return p
+    return None
+
+
 def fly_route(n, boxes, dest, alt=7.0):
     """Fly to dest (east, north) by a clear route, facing each leg.
 
@@ -325,15 +364,19 @@ def guarded(run):
         leave_safe()
 
 
-def ensure_airborne(alt=7.0, goto=None):
+def ensure_airborne(alt=7.0, goto=None, legs=None, margin=5.0):
     """Arm, take off and hold, from whatever state the last script left.
 
     The single-purpose scripts measure things in flight and used to assume
     the aircraft was already up, which on a fresh stack meant no measurement.
     Call this after rclpy.init(). It uses its own node and destroys it, so the
     calling script's node is untouched. `goto` is an optional (east, north) to
-    fly to first, at `alt`, in brake mode with collision prevention live.
-    Returns the (north, east, alt) it ended at, or None if it could not arm.
+    fly to first, at `alt`, in brake mode with collision prevention live,
+    by a route that keeps clear of the world's boxes. `legs` instead names
+    the (east, north) legs the script is about to fly facing north: the
+    aircraft goes to the nearest start where they keep `margin` from every
+    box (see open_air), and turns to face north. Returns the (north, east,
+    alt) it ended at, or None if it could not arm or find open air.
     """
     n = R()
     for _ in range(40):
@@ -366,11 +409,25 @@ def ensure_airborne(alt=7.0, goto=None):
         spin(n, 1.0)
         if n.pos[2] > alt - 1.0:
             break
+    boxes = world_boxes() if (goto is not None or legs is not None) else None
+    if legs is not None:
+        goto = open_air(boxes, legs, (n.pos[1], n.pos[0]), margin)
+        if goto is None:
+            print("  no start in this world keeps %.0f m from every box for "
+                  "these legs" % margin)
+            n.destroy_node()
+            return None
+        print("  open air for the legs: east %+.1f north %+.1f" % goto)
     if goto is not None:
-        n.send(goto[0], goto[1], alt)
-        for _ in range(60):
+        if not fly_route(n, boxes, goto, alt):
+            print("  did not reach east %+.1f north %+.1f" % goto)
+            n.destroy_node()
+            return None
+    if legs is not None:
+        n.send(n.pos[1], n.pos[0], alt, 0.0)       # face north
+        for _ in range(25):
             spin(n, 1.0)
-            if abs(n.pos[1] - goto[0]) < 1.0 and abs(n.pos[0] - goto[1]) < 1.0:
+            if abs(math.degrees(wrap(n.yaw))) < 5.0:
                 break
     spin(n, 3.0)
     out = (n.pos[0], n.pos[1], n.pos[2])

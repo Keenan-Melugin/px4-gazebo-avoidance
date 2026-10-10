@@ -23,7 +23,7 @@ import rclpy
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from regression import guarded  # noqa: E402
+from regression import ensure_airborne, guarded  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
                        ReliabilityPolicy)
@@ -160,25 +160,16 @@ def main():
     param("CP_GO_NO_DATA", 1)
     print("  CP_DIST 2.0 for the whole test, deliberately never changed")
 
-    n.set_mode('brake')
-    n.stop_pilot()
-    spin(n, 5.0)
-    if not n.armed:
-        for _ in range(20):
-            if n.healthy:
-                n.arm(); spin(n, 2.0)
-                if n.armed:
-                    break
-            spin(n, 3.0)
-    if not n.armed:
-        print("  could not arm"); return 1
-
-    print("  climbing, nose north, well clear of the walls")
-    n.goal(-2.0, -14.0, 9.0, 0.0)
-    for _ in range(60):
-        spin(n, 1.0)
-        if n.alt > 8.0 and abs(n.pos[0] + 14) < 2.5:
-            break
+    # Steps 3 and 4 fly 1 m/s north for 14 s and then east for 14 s in plan
+    # mode, where nothing brakes. The first version climbed at a fixed point
+    # it called "well clear of the walls" and was not: measured 2026-10-10,
+    # the east leg hit box1 at 1 m/s, the aircraft fell to the ground, and
+    # the step reported a slow 0.34 m/s instead of a crash. Open air is now
+    # found from the world file for the legs actually flown.
+    print("  climbing to open air for the two legs, nose north")
+    if ensure_airborne(alt=9.0, legs=[(0.0, 18.0), (18.0, 0.0)]) is None:
+        print("  ABORT: could not take off into open air"); return 2
+    spin(n, 2.0)
     print("  at north %+.2f east %+.2f alt %.2f heading %+.0f"
           % (n.pos[0], n.pos[1], n.alt, math.degrees(n.yaw)))
     if n.alt < 6.0:

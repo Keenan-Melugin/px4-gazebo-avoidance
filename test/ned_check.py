@@ -133,7 +133,10 @@ def main():
     rclpy.init()
     # Take off first if needed: this used to assume the aircraft was
     # already flying, and on a fresh stack measured nothing (2026-10-10).
-    if ensure_airborne() is None:
+    # Three 11 s legs at 1 m/s in plan mode, where nothing brakes: north,
+    # then east, then back west. They need open air, not wherever the
+    # last script stopped.
+    if ensure_airborne(alt=9.0, legs=[(0.0, 16.0), (16.0, 0.0), (-16.0, 0.0)]) is None:
         print("  could not arm and take off"); return 1
     n = C()
     # Up to 20 s for the first data. A fixed 4 s was enough on the
