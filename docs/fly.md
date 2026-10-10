@@ -54,7 +54,7 @@ The first flight, in order:
 
 It worked if the blue box lifts within a couple of seconds, climbs and flies
 to the ball, and terminal 2 prints `arrived:` with the remaining error, under
-0.6 m horizontally. The pilot's full stick is about 5 m/s, so a goal 10 m
+0.6 m horizontally. The pilot's full stick is about 4.4 m/s, so a goal 10 m
 away takes a few seconds once it has climbed.
 
 Arm before you set a goal. PX4 refuses to arm while the throttle stick is
