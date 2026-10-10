@@ -7,6 +7,19 @@ world it flies in. Every command here was run on the development machine on
 2026-10-07; the two marked untested were not. If ROS 2, PX4, Nav2 or ULog
 are new names, [pieces.md](pieces.md) says what each is first.
 
+## What does not work yet
+
+Three things on this page are documented but not usable as they stand, so
+do not start with them:
+
+- Failure injection (PX4's `failure` command): measured not to work with
+  Gazebo Harmonic at PX4 v1.17.0. The command times out and nothing fails.
+  Use the ROS-side substitutes under "A sensor that stops".
+- Wind: PX4's `windy` world does nothing to the stock aircraft, because the
+  x500 does not opt in to wind. The recipe is under "Wind", untested.
+- The speed factor (running faster or slower than real time): documented
+  by PX4, untested here.
+
 ## What a run writes on its own: PX4's flight log
 
 PX4 in simulation logs exactly as it does on an aircraft. Its SITL startup
@@ -32,7 +45,8 @@ else references those files.
 
 ### Reading one
 
-`pip install pyulog` gives the command-line tools
+pyulog is PX4's Python library for reading ULog files. `pip install pyulog`
+(pip is Python's package installer) gives the command-line tools
 (`ulog_info`, `ulog_messages`, `ulog_params`, `ulog2csv`), and
 `ulog2ros2bag` turns a log into a ROS 2 bag:
 
@@ -42,14 +56,17 @@ ulog_params file.ulg | grep CP_                       # the parameters the run f
 ulog2csv -m obstacle_distance,vehicle_local_position file.ulg   # one CSV per message
 ```
 
+CSV (comma-separated values) is plain text a spreadsheet opens directly.
+
 The histogram PX4 received is in the log as `obstacle_distance`, what it
 fused as `obstacle_distance_fused`, the velocity limits it derived as
 `collision_constraints`, and the sticks as `manual_control_setpoint` (all
 four confirmed in a log from the walls world with `ulog_info`). The
 parameters the run flew with are in the log too, which is how a number is
 tied to its `CP_DIST` a month later.
-PX4's Flight Review (logs.px4.io, or self-hosted from PX4/flight_review)
-plots a log in the browser. A log from the simulator is the same format as
+PX4's Flight Review, a web application (logs.px4.io, or self-hosted from
+PX4/flight_review), plots a log in the browser. PlotJuggler, a desktop
+plotting tool, graphs any logged topic against time. A log from the simulator is the same format as
 one from the aircraft, so any pipeline that ingests flight logs ingests
 these; mark the source as simulation.
 
@@ -128,8 +145,8 @@ scripts/report.sh                                    # machine, versions, runnin
 `~/PX4-Autopilot/build/px4_sitl_default/bin`. The pair `gz model -p` and
 `ros2 topic echo /fmu/out/vehicle_local_position_v1` is the check for a
 diverged estimator: when PX4's position and Gazebo's disagree, every later
-number is suspect. Today they agreed to 10 cm after a flight through a wall
-that was first blamed on the estimator.
+number is suspect. On 2026-10-07 they agreed to 10 cm after a flight through
+a wall that was first blamed on the estimator.
 
 ## Driving the aircraft from a script or the shell
 
@@ -137,7 +154,8 @@ The pilot and the planner take their inputs on topics, which is what the
 measurement scripts use and what RViz's menus publish. From a script,
 `test/regression.py`'s node class `R` already subscribes to position and
 status and publishes all of these; reuse it, as `test/template_measure.py`
-does.
+does. Types are written as package and message name: `geometry_msgs/PoseStamped`
+is the `PoseStamped` message from ROS's standard `geometry_msgs` package.
 
 | Input | Type | Meaning |
 |---|---|---|
@@ -148,7 +166,8 @@ does.
 | `/cmd_vel` | `geometry_msgs/Twist` | Nav2's output into the pilot; publishing it by hand drives velocity mode |
 | `/fmu/in/vehicle_command` | `px4_msgs/VehicleCommand` | Arm (command 400, `param1` 1, `param2` 21196 to force), takeoff (22), land (21); `target_system` 1 |
 
-From the shell, the same things in YAML:
+From the shell, the same things in YAML (a plain-text data format of keys and
+values, which the ROS command line uses for message contents):
 
 ```bash
 ros2 topic pub --once /avoidance_sim/mode std_msgs/msg/String "{data: brake}" \
@@ -180,8 +199,8 @@ walls RViz draws; `lidar:=true` adds the lidar; `sensors:=file.yaml` and
 ### Sensors, in a file
 
 The obstacle node reads a standard ROS parameter
-file, keyed by its node name with `ros__parameters` underneath, nested maps
-becoming dotted names. `config/sensors_lidar.yaml` is the one `lidar:=true`
+file, a YAML file keyed by its node name with `ros__parameters` underneath,
+nested maps becoming dotted names. `config/sensors_lidar.yaml` is the one `lidar:=true`
 loads; `config/sensors_example.yaml` is the commented template with a rear
 camera and a side scanner. A sensor on a new Gazebo topic also needs that
 topic bridged, in `bridge_extra`, in the bridge's own syntax
@@ -195,8 +214,9 @@ Three ways, in order of persistence. At start,
 launch (the launch applies them through `px4-param` once PX4 answers, which
 is the only route that reaches every parameter; `scripts/px4_params.sh`
 says why). While running, `px4-param set CP_DIST 3.0`, or `param set` at the
-`pxh>` prompt. To keep a value across restarts, `param save` at `pxh>`; it
-writes `build/px4_sitl_default/rootfs/parameters.bson`, which the next start
+`pxh>` prompt, PX4's own shell in terminal 1. To keep a value across
+restarts, `param save` at `pxh>`; it writes
+`build/px4_sitl_default/rootfs/parameters.bson` (PX4's binary parameter file), which the next start
 loads, and which is how the development machine came to differ from a fresh
 install for months. `PX4_PARAM_NAME=value` in PX4's environment is applied
 before the airframe file, so it cannot set a value the airframe file sets.
@@ -223,7 +243,8 @@ launch ([extend/worlds.md](extend/worlds.md) for making one).
 
 `PX4_SIM_SPEED_FACTOR=2 make px4_sitl gz_x500_depth` asks
 Gazebo for twice real time, and PX4's startup script scales its link-loss
-timeouts to match. PX4 and Gazebo run in lockstep, so the factor is a
+timeouts to match. PX4 and Gazebo run in lockstep, meaning each simulation
+step waits for both to finish, so the factor is a
 target the machine may not reach, and the script only applies it when it
 spawns the model, not when it attaches to a world already running. Untested
 here. The thing to check first is the stick stream: the pilot runs on
@@ -247,13 +268,15 @@ The depth camera's resolution and rate are the
 patch in `patches/`, applied to the OakD-Lite model in PX4's tree. Its field
 of view (`horizontal_fov`) and range (`<clip>`) are in the same file. A
 `<noise type="gaussian"><stddev>` element inside `<camera>` or `<lidar>`
-adds measurement noise. The obstacle node's own filters are its parameters:
+adds measurement noise: random error with a bell-curve distribution of that
+standard deviation. The obstacle node's own filters are its parameters:
 `height_band_m`, `decimate`, `stale_s`, and per sensor the ranges and arc.
 
 ### A sensor that stops
 
 `kill -STOP $(pgrep -f parameter_bridge)` freezes
-the bridge; after `stale_s` the node drops the camera, publishes nothing,
+the bridge: the STOP signal pauses a process without ending it, and
+`pgrep -f` finds its process number by name. Then after `stale_s` the node drops the camera, publishes nothing,
 and PX4 holds on its own 0.5 s timeout (`kill -CONT` resumes). That is the
 dead-camera behaviour the VM run forced, available on demand.
 
@@ -286,12 +309,6 @@ from the `pxh>` prompt, printed "inject failure unit: gps" and then "Timeout
 waiting for ack", and the position stayed valid. So at this version with
 Gazebo Harmonic, failure injection is not a tool this stack has. The ROS-side
 substitutes above (freeze the bridge, stop a node) are.
-
-### Light and time of day
-
-The world's `<light>` is a directional sun;
-the depth camera and the lidar are range sensors and do not care. Change it
-for pictures, not for measurements.
 
 ## Sources
 
