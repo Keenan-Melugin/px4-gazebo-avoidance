@@ -108,7 +108,7 @@ ros2 launch avoidance_sim nav2.launch.py lidar:=true
 
 The binary defaults to the build's `rootfs` working directory and to
 `etc/init.d-posix/rcS`, so no further arguments. The launch bridges `/lidar`,
-gives the obstacle node both sources. In RViz, tick the  display,
+gives the obstacle node both sources. In RViz, tick the `lidar scan` display,
 which ships switched off, to see the scan in orange.
 
 ## Measured with the lidar
