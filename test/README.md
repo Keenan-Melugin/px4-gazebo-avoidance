@@ -7,7 +7,7 @@ the stack running, and flies the aircraft.
 ## The gate
 
 ```bash
-python3 test/gate.py        # about eight minutes; needs nav2.launch.py up
+python3 test/gate.py        # about four minutes; needs nav2.launch.py up
 ```
 
 Runs `regression.py` (brake mode) and then `nav2_flight.py` (plan mode) and

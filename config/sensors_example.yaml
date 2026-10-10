@@ -24,6 +24,11 @@
 # calls; python3 -c "..." with a synthetic cloud is five lines. Then the gate.
 obstacle_distance_publisher:
   ros__parameters:
+    # Node-wide settings, shown at their defaults; delete or change.
+    height_band_m: 1.0     # keep cloud points within this of the aircraft's height
+    decimate: 8            # use every Nth cloud point
+    stale_s: 1.0           # a sensor silent this long drops out of the histogram
+
     sources: "camera rear side"
 
     # The stock forward depth camera. Listed so the node keeps it; nothing

@@ -6,7 +6,7 @@
 
 Needs PX4, Gazebo and nav2.launch.py running, the aircraft somewhere sensible
 (see README.md in this directory) and nobody else touching it. Takes about
-eight minutes. The exit code is the number of halves that failed.
+four minutes (205 to 255 s measured). The exit code is the number of halves that failed.
 
 The halves are separate scripts because each is useful alone: regression.py
 after a change to the pilot, the frames or the obstacle node; nav2_flight.py

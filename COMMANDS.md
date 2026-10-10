@@ -227,7 +227,7 @@ measurements, not unit tests.
 ```bash
 python3 test/histogram_selftest.py   # the obstacle node alone, no simulator, two seconds
 python3 -m avoidance_sim.world_geometry pillars --from 0 0 --dir east   # what the tests see in a world
-python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, about 8 min
+python3 test/gate.py             # THE GATE: regression.py then nav2_flight.py, about 4 min
 python3 test/gate.py --world pillars   # the same gate in the second world
 python3 test/avoid_test.py       # standoff from a wall. Repositions itself first
 python3 test/regression.py       # brake mode: heading hold and the standoff, exit code counts failures

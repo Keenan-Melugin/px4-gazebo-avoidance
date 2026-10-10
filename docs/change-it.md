@@ -7,6 +7,17 @@ rather than something else.
 ## Where things live
 
 ```
+README.md               the front door: what it is, the Start-here table, the measured status and hardware
+COMMANDS.md             every command in the repository, with what goes wrong with each
+docs/
+  pieces.md             what ROS 2, Gazebo, PX4, the bridge, RViz and Nav2 each are and do here, with a ROS 2 learning path
+  install.md            from no operating system to a flying aircraft, every step with a check
+  fly.md                flying from RViz in brake mode and plan mode, and what looks like a fault but is not
+  how-it-works.md       the two data paths and the measurements behind each design decision
+  change-it.md          this page
+  extend.md             adding a world, a sensor, an airframe or a second machine
+  data.md               flight logs, bags, replay, the input topics, configuration by file, the conditions of a run
+  img/                  the three screenshots
 avoidance_sim/
   frames.py             frame conventions, the two shared QoS profiles, quaternion helpers
   obstacle_distance.py  point clouds and laser scans -> one 72-bin histogram. Sensors as parameters
@@ -28,15 +39,15 @@ config/sensors_example.yaml  the template for describing any sensor set (sensors
 scripts/px4_params.sh   the PX4 parameters the launch sets
 scripts/report.sh       what this machine is and what state the stack is in, for problem reports
 scripts/record.sh       a rosbag2 of a run's light topics, the cloud and the lidar on request
+scripts/ulog_timeline.py  a run printed from PX4's own flight log: position, mode, histogram, stream gaps
 scripts/prereqs.sh      ROS 2, Gazebo and build tools
 scripts/install.sh      agent, px4_msgs, this package, Nav2, and the link step below
 scripts/link_assets.sh  symlinks worlds/ and models/ into PX4's Gazebo tree, where PX4 insists they live
 patches/                the depth camera resolution change
 worlds/                 extra worlds: pillars, and the template for the next one; its README is the checklist
 models/                 extra aircraft: x500_depth_lidar, plus a PX4 airframe-file template and the README that orders the steps
-test/                   the measurement scripts, the gate, histogram_selftest.py (no simulator) and template_measure.py (copy it)
-docs/data.md            flight logs, bags, replay, the input topics, configuration without editing, the conditions of a run
-docs/pieces.md          what ROS 2, Gazebo, PX4, the bridge, RViz and Nav2 each are and do here, with a ROS 2 learning path through this code
+test/                   the measurement scripts, the gate, histogram_selftest.py (no simulator) and template_measure.py (copy it); its README lists them
+package.xml, setup.py, setup.cfg, resource/   the ROS 2 package description and build files colcon reads
 ```
 
 ## The build loop
@@ -54,22 +65,26 @@ not pick up new code.
 ## The gate
 
 ```bash
-python3 test/gate.py                  # about 6 minutes, needs nav2.launch.py running
+python3 test/gate.py                  # about 4 minutes, needs nav2.launch.py running
 python3 test/gate.py --world pillars  # the same, in the second world
 ```
 
 Run it after any change to the pilot, the frames, the obstacle node or the
 Nav2 configuration. It flies the aircraft through the two things this
 repository claims. In brake mode: four cardinal headings held, then the
-standoff from a wall at `CP_DIST 2.0`. In plan mode: a route round a 10 m wall
-to a goal behind it. The exit code counts failures, and each half prints what it
-measured, so a regression shows up as a number that moved, not as an opinion.
+closest approach to a wall at `CP_DIST 2.0`. The brake half finds the wall
+east of the aircraft from the world file, moves well inside its span, backs
+off to 8 m for a run-up, pushes, and stops once the aircraft has stood still.
+In plan mode: a route round a 10 m wall to a goal behind it, ending within 4 m
+of the goal. The exit code counts failures, and each half prints what it
+measured, so a regression shows up as a number that moved, not as an
+opinion. Measured: 205 to 255 s for the whole gate on the development machine.
 
-Two conditions for a result that means anything. Nobody else may be driving
-the aircraft; a goal clicked in RViz during a run fights the test for the same
-topic. And the start position matters: the gate assumes the aircraft is
-somewhere sensible near the origin, facing nothing. `test/README.md` lists the
-other ten scripts, each measuring one thing.
+One condition for a result that means anything: nobody else may be driving
+the aircraft. A goal clicked in RViz during a run fights the test for the
+same topic. Each half positions the aircraft itself, so the start position
+no longer matters. `test/README.md` lists the other scripts, each measuring
+one thing.
 
 After a change to the obstacle node, before the gate:
 `python3 test/histogram_selftest.py`. It needs no simulator, takes two seconds,
@@ -85,10 +100,13 @@ prints the gap. Expect a spread of a third of the setpoint.
 
 **Change the camera.** Resolution and rate are in
 `patches/px4-camera-res.patch`, applied to the OakD-Lite model in the PX4
-tree. Field of view, clip distances, height band and decimation are parameters
-of the obstacle node, with the model's values as defaults; pass them with
-`-p` or in the launch. If the field of view changes, so does the number of
-observed bins and the `1.48 * range` standoff rule for planning.
+tree. What the obstacle node assumes about the camera (field of view, range,
+mount position) goes in a sensors file: copy `config/sensors_example.yaml`,
+change the `camera` entry, and launch with `sensors:=/path/to/yours.yaml`.
+Height band and decimation are node-wide parameters in the same file. If the
+field of view changes, so does the number of observed bins and the
+`1.48 * range` standoff rule for planning. Run `test/histogram_selftest.py`
+before flying.
 
 **Tune the pilot.** The gains and dead bands are constants at the top of
 `software_pilot.py`, each with the measurement that set it. If you change the
@@ -112,8 +130,9 @@ typed twice. Making a world is in [extend.md](extend.md).
 **Add a node to the bridge.** Write it as a plain `rclpy` node, add the class
 to `NODE_TYPES` in `rviz_bridge.py`, and use `PX4_QOS` from `frames.py` for
 anything that talks to PX4. Keep callbacks short: the six nodes share one
-single-threaded executor, which is why the process costs a sixth of a core
-rather than a whole one. Pass `start_parameter_services=False` to the node
+executor, `rclpy.experimental.EventsExecutor` by default with the
+single-threaded one as fallback, which is why the process costs a sixth of a
+core rather than a whole one. Pass `start_parameter_services=False` to the node
 constructor as the others do; nothing calls those services and each one is a
 waitable the executor pays for.
 
