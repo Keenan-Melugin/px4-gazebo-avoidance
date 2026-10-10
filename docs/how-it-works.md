@@ -2,7 +2,9 @@
 
 Two data paths, one aircraft. This page is what you need to know to read the
 code, in the order the data flows, with the measurements that shaped each
-decision. Every number is from this stack unless it says otherwise.
+decision. Every number is from this stack unless it says otherwise. Terms
+from [pieces.md](pieces.md) are not redefined here; new ones are defined
+where they first appear.
 
 ## The two paths
 
@@ -22,21 +24,25 @@ RViz goal --> Nav2 planner --> pure pursuit --> /cmd_vel --> software pilot
     --> /fmu/in/trajectory_setpoint (velocity) --> PX4 Offboard mode
 ```
 
-PX4 and ROS 2 talk through the Micro XRCE-DDS Agent. PX4 publishes about 27
-topics under `/fmu/out/` and subscribes under `/fmu/in/`. The ROS side is one
+PX4 and ROS 2 talk through the Micro XRCE-DDS Agent. PX4 v1.17.0 publishes
+27 topics under `/fmu/out/` and subscribes to 38 under `/fmu/in/` (counted on
+the running stack, 2026-10-10); `ros2 topic list` shows them. The ROS side is one
 launch file: the agent, a `ros_gz_bridge` for the clock and the cloud, the
 obstacle node, and one process holding the six RViz-side nodes.
 
 ## Why sticks
 
 PX4's collision prevention lives in one place: the stick-to-acceleration
-mapper of its manual Position-mode flight task (`StickAccelerationXY`). Every
+mapper of its manual Position-mode flight task. That mapper, the class
+`StickAccelerationXY` in PX4's source, turns horizontal stick deflection into
+an acceleration demand, and collision prevention trims that demand. Every
 automatic mode, reposition, mission and Offboard alike, bypasses it. So the
 only way to fly to a goal with avoidance active is to fly on sticks, and the
 pilot does exactly that: it runs the position controller itself and emits
-`ManualControlSetpoint` at 50 Hz. PX4 cannot tell this from a ground
-station's virtual joystick, because both arrive on the same topic and the
-source is checked once, against `COM_RC_IN_MODE`, which SITL sets to 1.
+`ManualControlSetpoint`, PX4's stick message, at 50 Hz. PX4 cannot tell this
+from a ground station's virtual joystick, because both arrive on the same
+topic. The source is checked once, against `COM_RC_IN_MODE`, the parameter
+that says which stick inputs to accept; SITL sets it to 1, joystick only.
 
 Fifty hertz is not arbitrary. PX4 declares RC loss after `COM_RC_LOSS_T`,
 0.5 s, so the stream must never pause. Plan mode streams zero sticks for the
@@ -54,6 +60,13 @@ point per bin within a 1 m height band around the aircraft, and publishes at
 10 Hz. The camera's 73 degree field fills 15 bins; those are 75 degrees wide
 together, so about a degree at each edge is reported as clear without having
 been seen.
+
+That describes the stock stack, one camera. The node takes any number of
+sensors, point clouds and laser scans, each with its own mount and arc, and
+merges them before PX4 sees anything: nearest range per bin, observed arcs
+added together. The merging has to happen here because PX4 overwrites
+rather than merges two histogram publishers. [extend.md](extend.md),
+section 2, has the sensor list and the measured lidar case.
 
 The message has three bin states, and conflating two of them is the bug to
 avoid:
@@ -76,17 +89,21 @@ per frame, which starved the node to 2 Hz. Every eighth point is plenty for
 72 bins. The cloud from Gazebo's bridge is FLU, x forward, not the ROS
 optical convention; measured by reading the extents while facing a wall.
 
-Standoff is a brake, not a hold: at `CP_DIST 2.0` three runs stopped 1.98,
-2.05 and 2.60 m out, a 31% spread. PX4 measures from the sensor, not the
-propeller tips.
+Standoff is a brake, not a hold: at `CP_DIST 2.0` the closest approach over
+eight runs ranged from 1.97 to 2.60 m, a 32% spread (the README's status
+table has each run). PX4 measures from the sensor, not the propeller tips.
 
 ## Frames, and the two that fail silently
 
-PX4 speaks NED for the world and FRD for the body. ROS speaks ENU and FLU.
-Positions swap axes; attitude needs a rotation applied on both sides of the
+PX4 speaks NED for the world (x north, y east, z down) and FRD for the body
+(x forward, y right, z down). ROS speaks ENU (east, north, up) and FLU
+(forward, left, up). Positions swap axes. Attitude is held as a quaternion,
+four numbers that encode a 3D rotation without the singularities of roll,
+pitch and yaw. Converting it needs a rotation applied on both sides of the
 quaternion, or the aircraft renders upside down in RViz while its heading
 still reads correctly. `frames.py` holds both constant rotations as plain
-quaternion products, checked against scipy to 1e-15.
+quaternion products, checked against SciPy, the scientific Python library,
+to 1e-15.
 
 Stick XY is in the heading frame, not NED: PX4 rotates stick input by the
 current yaw before using it. So the pilot rotates its position error by the
@@ -99,8 +116,11 @@ A goal that wants its heading held says so with the frame id `odom+yaw`.
 
 ## The pilot's numbers
 
-PD on position, not P: zero stick only brakes through PX4's drag model, and
-P alone overshot a 5 m goal by about 3 m.
+The pilot is a PD controller on position, not a P controller. A P
+(proportional) controller commands stick in proportion to the distance from
+the goal; PD adds a derivative term that pushes back in proportion to speed,
+which brakes the approach. It is needed because zero stick only brakes
+through PX4's drag model, and P alone overshot a 5 m goal by about 3 m.
 
 The yaw stick has a dead band. Measured by sweeping it:
 
@@ -124,7 +144,9 @@ Scaling off the parameter would under-command by more than double.
 The obvious design was defence in depth: let Nav2 plan, feed its velocity
 through the pilot's sticks, and keep PX4 braking underneath. It does not work,
 and the reason is structural. A planner approaches an obstacle in order to go
-round it; collision prevention exists to veto motion toward obstacles. Measured with one A/B, same goal:
+round it; collision prevention exists to veto motion toward obstacles.
+Measured with one A/B comparison, the same goal flown twice with one thing
+changed:
 
 | `CP_DIST` | Nav2 commanded | achieved | outcome |
 |---|---|---|---|
@@ -157,14 +179,19 @@ Four settings are decisions, each from a measured failure:
   135 scan beams on a wall at 9.9 m, lethal cell count frozen for 18 s. Both
   bounds are now wide open at the layer and at the source; the height
   selection happens in `pointcloud_to_laserscan`, relative to the aircraft.
-- The global costmap never clears. With a 73 degree arc and clearing on,
-  every cell the scan stops covering is raytraced free, so turning the nose
-  away forgets the wall and the planner draws a line through it. Measured: a
-  7.0 m plan for a 6.9 m straight-line goal with a wall in between.
-- Regulated pure pursuit, not MPPI. MPPI is the better theoretical fit for a
-  holonomic vehicle and it collapsed to commanding nothing three times, each
-  after a round of tuning, with a valid 17 m plan sitting unused. Pure pursuit
-  geometrically chases a point on the path and cannot fail that way.
+- The global costmap never clears. With clearing on, Nav2 raytraces each
+  scan beam, marking every cell the beam passes through as free. With a 73
+  degree arc, every cell the scan stops covering is cleared, so turning the
+  nose away forgets the wall and the planner draws a line through it.
+  Measured: a 7.0 m plan for a 6.9 m straight-line goal with a wall in
+  between.
+- Regulated pure pursuit, not MPPI. MPPI (model predictive path integral)
+  samples thousands of candidate trajectories and blends the cheapest. It is
+  the better theoretical fit for a holonomic vehicle, one that can move in
+  any horizontal direction without turning first, as a quadrotor can. It
+  collapsed to commanding nothing three times, each after a round of tuning,
+  with a valid 17 m plan sitting unused. Pure pursuit geometrically chases a
+  point on the path and cannot fail that way.
 
 Pure pursuit aborts the whole goal on `detected collision ahead!`, which fires
 when the camera marks a wall cell under a path planned a moment earlier. Nav2's
@@ -207,10 +234,12 @@ are `BEST_EFFORT` and `VOLATILE`; a subscriber asking for `RELIABLE` or
 
 ## The bridge process
 
-The six RViz-side nodes share one process and one executor. It cost 102% of a
+The six RViz-side nodes share one process and one executor, the loop that
+waits for messages and timers and runs their callbacks. It cost 102% of a
 core on a `MultiThreadedExecutor`, with the callbacks accounting for a third
-of that; the rest was rclpy rebuilding its wait set over about 75 entities on
-each of 300 wake-ups a second. Measured in steps: single-threaded 65%, TF and
+of that. The rest was rclpy, ROS 2's Python client library, rebuilding its
+wait set (the list of things it is waiting on) over about 75 entities on each
+of 300 wake-ups a second. Measured in steps: single-threaded 65%, TF and
 odometry throttled from 100 to 30 Hz 60%, parameter services removed 57%,
 `rclpy.experimental.EventsExecutor` 18%. The last is the default, with the
 single-threaded executor as fallback and `AVOIDANCE_SIM_EXECUTOR=single` to
