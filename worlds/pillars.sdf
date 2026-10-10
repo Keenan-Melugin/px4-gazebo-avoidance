@@ -16,8 +16,13 @@
   Layout, in metres (x east, y north, z up), all 15 m tall:
     wall_east     x 7.5..8.5,  y -12..14   the brake-test wall. Long on
                                            purpose: the regression script
-                                           flies east from wherever the
-                                           aircraft is, and must find it
+                                           finds it from wherever the
+                                           aircraft is, then runs up from
+                                           exactly 8 m west of the face,
+                                           x -0.5..7.5. The pillars sit in
+                                           that stretch at north 3.5..4.5
+                                           and -4.5..-3.5, so a run-up on
+                                           those lines is blocked
     pillar_north  x 3.5..4.5,  y  3.5..4.5 one metre square, at the edge of
     pillar_south  x 3.5..4.5,  y -4.5..-3.5  the camera's 73 degree arc from
                                            the origin, so they enter the

@@ -1,6 +1,8 @@
 # Models
 
-`x500_depth_lidar` is the stock aircraft plus a 2D lidar, and the template
+A model is a Gazebo SDF file describing a body: its links (rigid parts),
+joints, collision shapes and sensors. `x500_depth_lidar` is the stock aircraft
+(PX4's x500 quadrotor with a depth camera) plus a 2D lidar, and the template
 for a model with one more sensor. The full account, with the PX4 source lines
 that decide the mechanism, is [docs/extend/sensors.md](../docs/extend/sensors.md) and
 [docs/extend/airframes.md](../docs/extend/airframes.md). The short version, in order of effort:
@@ -41,10 +43,13 @@ meshes/part.dae`; Gazebo finds them through the same link.
 ## A different vehicle
 
 A vehicle that is not a quadrotor needs its own PX4 airframe file as well as
-a model. `airframe_template/4100_gz_mymodel` is a commented template; the
-steps are inside it. PX4 ships a four-rotor tailsitter (`quadtailsitter`,
-airframe `4018`) and a standard VTOL with a pusher (`standard_vtol`, `4004`),
-which are the starting points for the project's aircraft. Expect the
+a model. An airframe file is the PX4 startup script that sets a vehicle's
+parameters: rotor layout, limits, controller gains. `airframe_template/4100_gz_mymodel` is a commented template; the
+steps are inside it. A VTOL (vertical take-off and landing) aircraft hovers on rotors
+and cruises on a wing. PX4 ships a four-rotor tailsitter, which takes off on
+its tail and pitches over to fly (`quadtailsitter`, airframe `4018`), and a
+standard VTOL with a pusher, a rear propeller for cruise (`standard_vtol`,
+`4004`). They are the starting points for the project's aircraft. Expect the
 measured numbers to change: the pilot's yaw and stick models were measured
 on the x500 (`test/yaw_threshold.py`, `test/xy_threshold.py` re-measure
 them), the standoff depends on mass and speed, and collision prevention

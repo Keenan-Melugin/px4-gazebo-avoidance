@@ -18,11 +18,18 @@
 #      ~/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt
 #   3. cd ~/PX4-Autopilot && make clean && make px4_sitl gz_mymodel
 #      (a clean build, because the airframe list is read at configure time;
-#      PX4's "Adding a New Airframe Configuration" page says the same)
+#      PX4's "Adding a New Airframe Configuration" page says the same. It is
+#      a full PX4 build, 1,098 steps.)
+#   4. Run the ROS launch as usual: it sets NAV_DLL_ACT 0, without which PX4
+#      waits for a ground station and will not arm.
+#
+# Tested 2026-10-10 by following these steps literally with a model linked as
+# mymodel: PX4 reported SYS_AUTOSTART=4100, spawned mymodel_0 and reached its
+# prompt. The test copy was then removed from PX4's tree.
 #
 # A sensor variant of the stock quadrotor does not need any of this: start it
 # with PX4_SYS_AUTOSTART=4002 PX4_SIM_MODEL=gz_<model> ./build/px4_sitl_default/bin/px4
-# and the x500_depth airframe below is reused. Only a different vehicle (a
+# and PX4's 4002_gz_x500_depth airframe is reused. Only a different vehicle (a
 # VTOL, a different rotor count, different mass and limits) needs a file.
 
 # Which simulator and world this airframe expects. ${X:=y} sets only if unset,
